@@ -10,7 +10,7 @@ interface LoginFormProps {
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const { login, demoLogin, isLoading } = useAuth();
-  const [email, setEmail] = useState('alex.morgan@client.com');
+  const [email, setEmail] = useState('declansalo@gmail.com');
   const [password, setPassword] = useState('portfolio123');
   const [error, setError] = useState('');
 
@@ -207,7 +207,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             cursor: 'pointer',
           }}
         >
-          Instant Demo Access (Alex Morgan)
+          Instant Demo Access (Declan Salo)
         </button>
 
         <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8' }}>

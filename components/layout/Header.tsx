@@ -346,7 +346,7 @@ export function Header({
                     fontWeight: 600,
                   }}
                 >
-                  {user?.name?.[0] || 'A'}
+                  {user?.name?.[0] || 'D'}
                 </div>
               )}
             </div>
@@ -354,12 +354,12 @@ export function Header({
 
           {showProfileMenu && (
             <div
-              className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl z-50"
+              className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl z-50"
               style={{
                 position: 'absolute',
                 right: 0,
                 marginTop: '8px',
-                width: '210px',
+                width: '230px',
                 backgroundColor: '#ffffff',
                 border: '1px solid #e2e8f0',
                 borderRadius: '12px',
@@ -369,8 +369,13 @@ export function Header({
               }}
             >
               <div className="border-b border-slate-100 px-3 py-2" style={{ borderBottom: '1px solid #f1f5f9', padding: '8px 12px' }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{user?.name || 'Alex Morgan'}</p>
-                <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{user?.email || 'alex.morgan@client.com'}</p>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{user?.name || 'Declan Salo'}</p>
+                <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{user?.email || 'declansalo@gmail.com'}</p>
+                {(user?.location || 'Nashville Tennessee, United States') && (
+                  <p style={{ fontSize: '10px', color: '#64748b', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>📍</span> {user?.location || 'Nashville Tennessee, United States'}
+                  </p>
+                )}
                 <span
                   style={{
                     display: 'inline-block',

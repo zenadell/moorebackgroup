@@ -6,8 +6,9 @@ import { useAuth } from '@/lib/auth/context';
 
 export function SettingsView() {
   const { user } = useAuth();
-  const [name, setName] = useState(user?.name || 'Alex Morgan');
-  const [email, setEmail] = useState(user?.email || 'alex.morgan@client.com');
+  const [name, setName] = useState(user?.name || 'Declan Salo');
+  const [email, setEmail] = useState(user?.email || 'declansalo@gmail.com');
+  const [location, setLocation] = useState(user?.location || 'Nashville Tennessee, United States');
   const [phone, setPhone] = useState('+1 (555) 392-8104');
   const [currency, setCurrency] = useState('USD');
   const [refreshRate, setRefreshRate] = useState('Real-time');
@@ -17,6 +18,17 @@ export function SettingsView() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      const updatedUser = {
+        ...(user || {}),
+        name,
+        email,
+        location,
+      };
+      localStorage.setItem('moback_auth_user', JSON.stringify(updatedUser));
+    } catch {
+      // ignore
+    }
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
   };
@@ -109,24 +121,46 @@ export function SettingsView() {
             </div>
           </div>
 
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Phone Number</label>
-            <input
-              type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              style={{
-                width: '100%',
-                marginTop: '4px',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                fontSize: '13px',
-                color: '#0f172a',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
+          <div className="settings-two-col">
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Location</label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="City, State, Country"
+                style={{
+                  width: '100%',
+                  marginTop: '4px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Phone Number</label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                style={{
+                  width: '100%',
+                  marginTop: '4px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
           </div>
 
           <div style={{ paddingTop: '8px' }}>

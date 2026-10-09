@@ -14,8 +14,9 @@ interface AuthContextType {
 
 const DEFAULT_USER: UserProfile = {
   id: 'usr_orion_01',
-  name: 'Alex Morgan',
-  email: 'alex.morgan@client.com',
+  name: 'Declan Salo',
+  email: 'declansalo@gmail.com',
+  location: 'Nashville Tennessee, United States',
   role: 'Private Portfolio #MO-88429',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
 };
@@ -30,7 +31,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem('moback_auth_user');
       if (stored) {
-        setUser(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        if (parsed.email === 'alex.morgan@client.com' || parsed.name === 'Alex Morgan' || !parsed.location) {
+          setUser(DEFAULT_USER);
+          localStorage.setItem('moback_auth_user', JSON.stringify(DEFAULT_USER));
+        } else {
+          setUser(parsed);
+        }
       } else {
         setUser(DEFAULT_USER);
         localStorage.setItem('moback_auth_user', JSON.stringify(DEFAULT_USER));
@@ -53,8 +60,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const newUser: UserProfile = {
       id: `usr_${Date.now()}`,
-      name: email.split('@')[0],
+      name: email === DEFAULT_USER.email ? DEFAULT_USER.name : email.split('@')[0],
       email: email,
+      location: DEFAULT_USER.location,
       role: 'Private Portfolio #MO-88429',
       avatarUrl: DEFAULT_USER.avatarUrl,
     };
