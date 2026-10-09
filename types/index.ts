@@ -69,3 +69,17 @@ export interface UserProfile {
   avatarUrl: string;
 }
 
+export interface AuthSessionInfo {
+  id: string;
+  userId: string;
+  deviceName: string;
+  ipAddress: string;
+  location: string;
+  createdAt: number;
+  lastActiveAt: number;
+  isRevoked: boolean;
+  revokedReason?: string;
+  isCurrent: boolean;
+}
+
+

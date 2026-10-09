@@ -16,7 +16,7 @@ import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, RECENT_TRANSACTIONS, LIQUID_CASH_R
 import { StockHolding } from '@/types';
 
 function DashboardContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -69,6 +69,17 @@ function DashboardContent() {
       clearInterval(interval);
     };
   }, []);
+
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f4f9' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '32px', height: '32px', borderRadius: '9999px', border: '3px solid #2563eb', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+          <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>Securing session...</span>
+        </div>
+      </div>
+    );
+  }
 
   // If not authenticated, show user login
   if (!isAuthenticated) {

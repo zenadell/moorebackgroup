@@ -1,97 +1,326 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile } from '@/types';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { UserProfile, AuthSessionInfo } from '@/types';
 
 interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  demoLogin: () => void;
-  logout: () => void;
+  sessionId: string | null;
+  revocationNotice: string | null;
+  clearRevocationNotice: () => void;
+  login: (email: string, pass: string, deviceName?: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  fetchSessions: () => Promise<{ success: boolean; sessions?: AuthSessionInfo[]; error?: string }>;
+  revokeSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  revokeAllOtherSessions: () => Promise<{ success: boolean; count?: number; error?: string }>;
+  changePassword: (
+    currentPass: string,
+    newPass: string,
+    revokeOthers?: boolean
+  ) => Promise<{ success: boolean; error?: string; revokedCount?: number }>;
 }
-
-const DEFAULT_USER: UserProfile = {
-  id: 'usr_orion_01',
-  name: 'Declan Salo',
-  email: 'declansalo@gmail.com',
-  location: 'Nashville Tennessee, United States',
-  role: 'Private Portfolio #MO-88429',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(DEFAULT_USER);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+const TOKEN_KEY = 'moback_session_token';
+const NOTICE_KEY = 'moback_revocation_notice';
 
-  useEffect(() => {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [revocationNotice, setRevocationNotice] = useState<string | null>(null);
+
+  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearRevocationNotice = () => {
+    setRevocationNotice(null);
     try {
-      const stored = localStorage.getItem('moback_auth_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.email === 'alex.morgan@client.com' || parsed.name === 'Alex Morgan' || !parsed.location) {
-          setUser(DEFAULT_USER);
-          localStorage.setItem('moback_auth_user', JSON.stringify(DEFAULT_USER));
-        } else {
-          setUser(parsed);
-        }
-      } else {
-        setUser(DEFAULT_USER);
-        localStorage.setItem('moback_auth_user', JSON.stringify(DEFAULT_USER));
-      }
+      sessionStorage.removeItem(NOTICE_KEY);
     } catch {
-      setUser(DEFAULT_USER);
-    } finally {
-      setIsLoading(false);
+      // ignore
+    }
+  };
+
+  // Helper to validate current session with server
+  const checkSession = useCallback(async (token: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/auth/session', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          setUser(data.user);
+          setSessionId(data.sessionId);
+          setIsAuthenticated(true);
+          return true;
+        }
+      }
+
+      // If response is not ok or not authenticated (e.g. revoked)
+      const data = await res.json().catch(() => ({}));
+      const reason = data.reason || 'Your session has been terminated by the account owner (Declan Salo).';
+
+      // Terminate local session
+      localStorage.removeItem(TOKEN_KEY);
+      try {
+        sessionStorage.setItem(NOTICE_KEY, reason);
+      } catch {
+        // ignore
+      }
+
+      setUser(null);
+      setSessionId(null);
+      setIsAuthenticated(false);
+      setRevocationNotice(reason);
+      return false;
+    } catch {
+      // Network hiccup - don't immediately revoke unless persistent
+      return false;
     }
   }, []);
 
-  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
+  // Initial load: check for token and existing notice
+  useEffect(() => {
+    try {
+      const savedNotice = sessionStorage.getItem(NOTICE_KEY);
+      if (savedNotice) {
+        setRevocationNotice(savedNotice);
+      }
+    } catch {
+      // ignore
+    }
 
-    if (!email || !pass) {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
       setIsLoading(false);
-      return { success: false, error: 'Email and password are required' };
+      return;
     }
 
-    const newUser: UserProfile = {
-      id: `usr_${Date.now()}`,
-      name: email === DEFAULT_USER.email ? DEFAULT_USER.name : email.split('@')[0],
-      email: email,
-      location: DEFAULT_USER.location,
-      role: 'Private Portfolio #MO-88429',
-      avatarUrl: DEFAULT_USER.avatarUrl,
+    checkSession(token).finally(() => {
+      setIsLoading(false);
+    });
+  }, [checkSession]);
+
+  // Real-time Heartbeat: checks session status every 4 seconds to immediately detect remote kick-outs
+  useEffect(() => {
+    if (!isAuthenticated) {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      return;
+    }
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+
+    heartbeatRef.current = setInterval(async () => {
+      const currentToken = localStorage.getItem(TOKEN_KEY);
+      if (!currentToken) return;
+
+      try {
+        const res = await fetch('/api/auth/session', {
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+          },
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.authenticated) {
+          // Session was revoked on server!
+          const reason =
+            data.reason || 'This session has been terminated by account owner (Declan Salo).';
+          localStorage.removeItem(TOKEN_KEY);
+          try {
+            sessionStorage.setItem(NOTICE_KEY, reason);
+          } catch {
+            // ignore
+          }
+          setUser(null);
+          setSessionId(null);
+          setIsAuthenticated(false);
+          setRevocationNotice(reason);
+        }
+      } catch {
+        // network error, ignore single poll
+      }
+    }, 3500);
+
+    return () => {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
     };
+  }, [isAuthenticated]);
 
-    setUser(newUser);
+  const login = async (
+    email: string,
+    pass: string,
+    deviceName?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
     try {
-      localStorage.setItem('moback_auth_user', JSON.stringify(newUser));
-    } catch {
-      // ignore
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass, deviceName }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setIsLoading(false);
+        return { success: false, error: data.error || 'Authentication failed' };
+      }
+
+      localStorage.setItem(TOKEN_KEY, data.token);
+      clearRevocationNotice();
+
+      setUser(data.user);
+      setSessionId(data.sessionId);
+      setIsAuthenticated(true);
+      setIsLoading(false);
+      return { success: true };
+    } catch (err: unknown) {
+      setIsLoading(false);
+      const message = err instanceof Error ? err.message : 'Login request failed';
+      return { success: false, error: message };
     }
-    setIsLoading(false);
-    return { success: true };
   };
 
-  const demoLogin = () => {
-    setUser(DEFAULT_USER);
-    try {
-      localStorage.setItem('moback_auth_user', JSON.stringify(DEFAULT_USER));
-    } catch {
-      // ignore
+  const logout = async () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // ignore
+      }
     }
-  };
-
-  const logout = () => {
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
+    setSessionId(null);
+    setIsAuthenticated(false);
+  };
+
+  const fetchSessions = async (): Promise<{
+    success: boolean;
+    sessions?: AuthSessionInfo[];
+    error?: string;
+  }> => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return { success: false, error: 'Not authenticated' };
+
     try {
-      localStorage.removeItem('moback_auth_user');
-    } catch {
-      // ignore
+      const res = await fetch('/api/auth/sessions', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Failed to fetch sessions' };
+      }
+      return { success: true, sessions: data.sessions };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      return { success: false, error: message };
+    }
+  };
+
+  const revokeSession = async (
+    targetSessionId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const res = await fetch('/api/auth/sessions/revoke', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId: targetSessionId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Failed to revoke session' };
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      return { success: false, error: message };
+    }
+  };
+
+  const revokeAllOtherSessions = async (): Promise<{
+    success: boolean;
+    count?: number;
+    error?: string;
+  }> => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const res = await fetch('/api/auth/sessions/revoke', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ allOthers: true }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Failed to revoke sessions' };
+      }
+      return { success: true, count: data.revokedCount };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      return { success: false, error: message };
+    }
+  };
+
+  const changePassword = async (
+    currentPass: string,
+    newPass: string,
+    revokeOthers: boolean = true
+  ): Promise<{ success: boolean; error?: string; revokedCount?: number }> => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const res = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          currentPassword: currentPass,
+          newPassword: newPass,
+          revokeOtherSessions: revokeOthers,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Failed to update password' };
+      }
+      return { success: true, revokedCount: data.revokedCount };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      return { success: false, error: message };
     }
   };
 
@@ -99,11 +328,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
+        isAuthenticated,
         isLoading,
+        sessionId,
+        revocationNotice,
+        clearRevocationNotice,
         login,
-        demoLogin,
         logout,
+        fetchSessions,
+        revokeSession,
+        revokeAllOtherSessions,
+        changePassword,
       }}
     >
       {children}

@@ -2,32 +2,48 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth/context';
-import { Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 interface LoginFormProps {
   onSuccess?: () => void;
 }
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
-  const { login, demoLogin, isLoading } = useAuth();
+  const { login, isLoading, revocationNotice, clearRevocationNotice } = useAuth();
   const [email, setEmail] = useState('declansalo@gmail.com');
-  const [password, setPassword] = useState('portfolio123');
+  const [password, setPassword] = useState('Declan2026!');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const res = await login(email, password);
+    clearRevocationNotice();
+
+    // Detect browser/device description
+    let deviceName = 'Web Browser';
+    if (typeof navigator !== 'undefined') {
+      const ua = navigator.userAgent;
+      if (/iphone/i.test(ua)) deviceName = 'Safari on iPhone';
+      else if (/ipad/i.test(ua)) deviceName = 'Safari on iPad';
+      else if (/macintosh|mac os x/i.test(ua)) deviceName = 'Mac Desktop';
+      else if (/windows/i.test(ua)) deviceName = 'Windows PC';
+      else if (/android/i.test(ua)) deviceName = 'Android Mobile';
+    }
+
+    const res = await login(email, password, deviceName);
     if (res.success) {
       if (onSuccess) onSuccess();
     } else {
-      setError(res.error || 'Authentication failed');
+      setError(res.error || 'Authentication failed. Please check your password.');
     }
   };
 
-  const handleDemo = () => {
-    demoLogin();
-    if (onSuccess) onSuccess();
+  const handleQuickFill = () => {
+    setEmail('declansalo@gmail.com');
+    setPassword('Declan2026!');
+    setError('');
+    clearRevocationNotice();
   };
 
   return (
@@ -44,7 +60,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       <div
         style={{
           width: '100%',
-          maxWidth: '400px',
+          maxWidth: '420px',
           backgroundColor: '#ffffff',
           borderRadius: '16px',
           border: '1px solid #e9edf3',
@@ -77,10 +93,33 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             Orion Dashboard
           </h2>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-            Sign in to access your portfolio
+            Private Portfolio Access for <strong>Declan Salo</strong>
           </p>
         </div>
 
+        {/* Remote Revocation Alert Banner */}
+        {revocationNotice && (
+          <div
+            style={{
+              marginTop: '18px',
+              borderRadius: '10px',
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fde68a',
+              padding: '12px 14px',
+              fontSize: '12px',
+              color: '#92400e',
+              lineHeight: '1.4',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+              <AlertTriangle style={{ width: '16px', height: '16px', color: '#d97706', flexShrink: 0 }} />
+              <span>Session Terminated</span>
+            </div>
+            <p style={{ marginTop: '4px', margin: 0 }}>{revocationNotice}</p>
+          </div>
+        )}
+
+        {/* Error Message */}
         {error && (
           <div
             style={{
@@ -97,9 +136,9 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ marginTop: '22px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Email Address</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Account Email</label>
             <div style={{ position: 'relative', marginTop: '6px' }}>
               <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
                 <Mail style={{ width: '16px', height: '16px' }} />
@@ -108,7 +147,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@client.com"
+                placeholder="declansalo@gmail.com"
                 required
                 style={{
                   width: '100%',
@@ -127,23 +166,35 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Password</label>
-              <span style={{ fontSize: '11px', color: '#2563eb', cursor: 'pointer' }}>
-                Forgot password?
-              </span>
+              <button
+                type="button"
+                onClick={handleQuickFill}
+                style={{
+                  fontSize: '11px',
+                  color: '#2563eb',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontWeight: 500,
+                }}
+              >
+                Use default password
+              </button>
             </div>
             <div style={{ position: 'relative', marginTop: '6px' }}>
               <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
                 <Lock style={{ width: '16px', height: '16px' }} />
               </div>
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
                 style={{
                   width: '100%',
-                  padding: '10px 14px 10px 38px',
+                  padding: '10px 38px 10px 38px',
                   borderRadius: '10px',
                   border: '1px solid #e2e8f0',
                   fontSize: '13px',
@@ -152,6 +203,30 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                   boxSizing: 'border-box',
                 }}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                aria-label="Toggle password visibility"
+              >
+                {showPassword ? (
+                  <EyeOff style={{ width: '15px', height: '15px' }} />
+                ) : (
+                  <Eye style={{ width: '15px', height: '15px' }} />
+                )}
+              </button>
             </div>
           </div>
 
@@ -172,47 +247,17 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               fontWeight: 600,
               border: 'none',
               cursor: 'pointer',
+              transition: 'background-color 0.15s ease',
             }}
           >
-            {isLoading ? 'Authenticating...' : 'Sign In'}
+            {isLoading ? 'Authenticating...' : 'Sign In as Declan Salo'}
             <ArrowRight style={{ width: '14px', height: '14px' }} />
           </button>
         </form>
 
-        <div style={{ position: 'relative', margin: '22px 0', textAlign: 'center' }}>
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
-            <div style={{ width: '100%', borderTop: '1px solid #f1f4f9' }} />
-          </div>
-          <span style={{ position: 'relative', backgroundColor: '#ffffff', padding: '0 10px', fontSize: '11px', color: '#94a3b8' }}>
-            or preview immediately
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleDemo}
-          style={{
-            display: 'flex',
-            width: '100%',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            borderRadius: '10px',
-            backgroundColor: '#eff6ff',
-            color: '#1d4ed8',
-            border: '1px solid #dbeafe',
-            padding: '10px',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Instant Demo Access (Declan Salo)
-        </button>
-
-        <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8' }}>
+        <div style={{ marginTop: '22px', borderTop: '1px solid #f1f4f9', paddingTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: '#64748b' }}>
           <ShieldCheck style={{ width: '14px', height: '14px', color: '#10b981' }} />
-          <span>Encrypted Session • Verified Portfolio</span>
+          <span>Active Session Control • Managed by Declan Salo</span>
         </div>
       </div>
     </div>
