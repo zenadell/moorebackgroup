@@ -15,8 +15,8 @@ interface AuthContextType {
 const DEFAULT_USER: UserProfile = {
   id: 'usr_orion_01',
   name: 'Alex Morgan',
-  email: 'admin@moback.com',
-  role: 'Chief Investment Officer',
+  email: 'alex.morgan@client.com',
+  role: 'Private Portfolio #MO-88429',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
 };
 
@@ -32,7 +32,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (stored) {
         setUser(JSON.parse(stored));
       } else {
-        // Pre-initialize with default user for immediate preview while allowing logout
         setUser(DEFAULT_USER);
         localStorage.setItem('moback_auth_user', JSON.stringify(DEFAULT_USER));
       }
@@ -45,24 +44,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    // Simulate auth network latency
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 400));
 
     if (!email || !pass) {
       setIsLoading(false);
       return { success: false, error: 'Email and password are required' };
     }
 
-    if (pass.length < 4) {
-      setIsLoading(false);
-      return { success: false, error: 'Password must be at least 4 characters' };
-    }
-
     const newUser: UserProfile = {
       id: `usr_${Date.now()}`,
-      name: email.split('@')[0].toUpperCase(),
+      name: email.split('@')[0],
       email: email,
-      role: 'Portfolio Manager',
+      role: 'Private Portfolio #MO-88429',
       avatarUrl: DEFAULT_USER.avatarUrl,
     };
 

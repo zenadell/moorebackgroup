@@ -6,7 +6,7 @@ interface RevenueChartProps {
   currencySymbol?: string;
 }
 
-export function RevenueChart({ currencySymbol = '$' }: RevenueChartProps) {
+export function RevenueChart({ currencySymbol = '€' }: RevenueChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Y-axis ticks matching Image 1: €124,560, €100,000, €80,000, €40,000, €20,000, €0
@@ -51,22 +51,30 @@ export function RevenueChart({ currencySymbol = '$' }: RevenueChartProps) {
   `;
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-slate-900">Revenue</h3>
-        <span className="text-[11px] font-medium text-slate-400">Realtime Curve</span>
+    <div
+      style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '14px',
+        border: '1px solid #e9edf3',
+        padding: '18px 20px',
+        boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
+          Revenue
+        </h3>
       </div>
 
-      <div className="relative mt-4 h-52 w-full max-w-full overflow-hidden" style={{ minHeight: '200px' }}>
+      <div style={{ position: 'relative', marginTop: '12px', height: '180px', width: '100%' }}>
         <svg
           viewBox="0 0 320 140"
-          className="h-full w-full overflow-visible"
-          style={{ width: '100%', height: '100%', maxHeight: '210px' }}
+          style={{ width: '100%', height: '100%', display: 'block' }}
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
             <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.30" />
               <stop offset="60%" stopColor="#3b82f6" stopOpacity="0.08" />
               <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
             </linearGradient>
@@ -113,7 +121,7 @@ export function RevenueChart({ currencySymbol = '$' }: RevenueChartProps) {
           {points.map((pt, index) => (
             <g
               key={index}
-              className="cursor-pointer"
+              style={{ cursor: 'pointer' }}
               onMouseEnter={() => setHoveredIndex(index)}
               onMouseLeave={() => setHoveredIndex(null)}
             >
@@ -143,10 +151,20 @@ export function RevenueChart({ currencySymbol = '$' }: RevenueChartProps) {
         {/* Hover Tooltip */}
         {hoveredIndex !== null && (
           <div
-            className="pointer-events-none absolute -top-2 rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-semibold text-white shadow-md transition-all z-10"
             style={{
+              position: 'absolute',
+              top: '-10px',
               left: `${(points[hoveredIndex].x / 320) * 100}%`,
               transform: 'translateX(-50%)',
+              backgroundColor: '#0f172a',
+              color: '#ffffff',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 600,
+              pointerEvents: 'none',
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+              zIndex: 10,
             }}
           >
             {currencySymbol}

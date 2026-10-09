@@ -7,7 +7,6 @@ import {
   Building2,
   BarChart3,
   Settings,
-  ShieldCheck,
   CircleDot
 } from 'lucide-react';
 
@@ -25,38 +24,46 @@ export function Sidebar({ currentTab, onSelectTab, holdingsCount = 17 }: Sidebar
       id: 'overview' as NavTab,
       label: 'Overview',
       icon: LayoutDashboard,
-      badge: undefined,
     },
     {
       id: 'analytics' as NavTab,
       label: 'Analytics',
       icon: TrendingUp,
-      badge: 'Live',
     },
     {
       id: 'customers' as NavTab,
       label: 'Customers',
       icon: Building2,
-      badge: holdingsCount.toString(),
     },
     {
       id: 'reports' as NavTab,
       label: 'Reports',
       icon: BarChart3,
-      badge: undefined,
     },
     {
       id: 'settings' as NavTab,
       label: 'Settings',
       icon: Settings,
-      badge: undefined,
     },
   ];
 
   return (
-    <aside className="w-56 shrink-0 border-r border-slate-200 bg-white min-h-[calc(100vh-4rem)] flex flex-col justify-between py-6 px-3">
-      {/* Navigation items list */}
-      <div className="space-y-1">
+    <aside
+      style={{
+        width: '210px',
+        minWidth: '210px',
+        maxWidth: '210px',
+        backgroundColor: '#ffffff',
+        borderRight: '1px solid #e9edf3',
+        minHeight: 'calc(100vh - 60px)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        padding: '20px 14px',
+      }}
+    >
+      {/* Navigation items list matching Image 1 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentTab === item.id;
@@ -65,50 +72,56 @@ export function Sidebar({ currentTab, onSelectTab, holdingsCount = 17 }: Sidebar
             <button
               key={item.id}
               onClick={() => onSelectTab(item.id)}
-              className={`group flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-slate-100/90 text-slate-900 font-semibold shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                width: '100%',
+                borderRadius: '10px',
+                padding: '9px 14px',
+                fontSize: '13px',
+                fontWeight: isActive ? 600 : 500,
+                color: isActive ? '#0f172a' : '#64748b',
+                backgroundColor: isActive ? '#eef2f6' : 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.15s ease',
+              }}
             >
-              <div className="flex items-center gap-3">
-                <Icon
-                  className={`h-4 w-4 transition-colors ${
-                    isActive ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-600'
-                  }`}
-                />
-                <span>{item.label}</span>
-              </div>
-
-              {item.badge && (
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    isActive
-                      ? 'bg-white text-slate-800 shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
-                  }`}
-                >
-                  {item.badge}
-                </span>
-              )}
+              <Icon
+                style={{
+                  width: '17px',
+                  height: '17px',
+                  color: isActive ? '#0f172a' : '#94a3b8',
+                }}
+              />
+              <span>{item.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Portfolio Status Footnote */}
-      <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
-        <div className="flex items-center gap-2">
-          <CircleDot className="h-3 w-3 text-emerald-500 animate-pulse" />
-          <span className="text-[11px] font-semibold text-slate-700">Market Sync Active</span>
+      {/* Account Info Footnote */}
+      <div
+        style={{
+          borderRadius: '12px',
+          backgroundColor: '#f8fafc',
+          border: '1px solid #eef2f6',
+          padding: '12px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <CircleDot style={{ width: '10px', height: '10px', color: '#10b981' }} />
+          <span style={{ fontSize: '11px', fontWeight: 600, color: '#334155' }}>
+            Portfolio Synced
+          </span>
         </div>
-        <p className="mt-1 text-[10px] text-slate-500 leading-relaxed">
-          17 Assets verified • Total Portfolio: <span className="font-semibold text-slate-800">$120.57M</span>
+        <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', lineHeight: '1.4' }}>
+          Balance: <strong style={{ color: '#0f172a' }}>$120.57M</strong>
+          <br />
+          {holdingsCount} Listed Holdings
         </p>
-        <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-blue-600 font-medium">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          <span>MoBack Security Verified</span>
-        </div>
       </div>
     </aside>
   );

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth/context';
-import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
 
 interface LoginFormProps {
   onSuccess?: () => void;
@@ -10,8 +10,8 @@ interface LoginFormProps {
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const { login, demoLogin, isLoading } = useAuth();
-  const [email, setEmail] = useState('admin@moback.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('alex.morgan@client.com');
+  const [password, setPassword] = useState('portfolio123');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,59 +31,109 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   };
 
   return (
-    <div className="flex min-h-[80vh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-8 shadow-xl">
-        {/* Brand header */}
-        <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f1f4f9',
+        padding: '20px',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '400px',
+          backgroundColor: '#ffffff',
+          borderRadius: '16px',
+          border: '1px solid #e9edf3',
+          padding: '36px 32px',
+          boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)',
+        }}
+      >
+        {/* Brand Header */}
+        <div style={{ textAlign: 'center' }}>
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '12px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto',
+            }}
+          >
+            <svg style={{ width: '22px', height: '22px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <circle cx="12" cy="12" r="9" />
               <path d="M12 3a9 9 0 0 1 9 9" strokeLinecap="round" />
               <circle cx="12" cy="12" r="3" fill="currentColor" />
             </svg>
           </div>
-          <h2 className="mt-4 text-xl font-bold tracking-tight text-slate-900">
-            Sign in to Orion Dashboard
+          <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', marginTop: '16px' }}>
+            Orion Dashboard
           </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            MoBack Portfolio Management & Market Intelligence
+          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+            Sign in to access your portfolio
           </p>
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl bg-red-50 p-3 text-xs font-medium text-red-600">
+          <div
+            style={{
+              marginTop: '16px',
+              borderRadius: '8px',
+              backgroundColor: '#fee2e2',
+              padding: '10px 14px',
+              fontSize: '12px',
+              color: '#dc2626',
+              fontWeight: 500,
+            }}
+          >
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Email Address</label>
-            <div className="relative mt-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                <Mail className="h-4 w-4" />
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Email Address</label>
+            <div style={{ position: 'relative', marginTop: '6px' }}>
+              <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                <Mail style={{ width: '16px', height: '16px' }} />
               </div>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
+                placeholder="name@client.com"
                 required
-                className="w-full rounded-xl border border-slate-200 py-2.5 pr-4 pl-10 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                style={{
+                  width: '100%',
+                  padding: '10px 14px 10px 38px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
           </div>
 
           <div>
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700">Password</label>
-              <span className="text-[11px] text-blue-600 hover:underline cursor-pointer">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Password</label>
+              <span style={{ fontSize: '11px', color: '#2563eb', cursor: 'pointer' }}>
                 Forgot password?
               </span>
             </div>
-            <div className="relative mt-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                <Lock className="h-4 w-4" />
+            <div style={{ position: 'relative', marginTop: '6px' }}>
+              <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                <Lock style={{ width: '16px', height: '16px' }} />
               </div>
               <input
                 type="password"
@@ -91,7 +141,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="w-full rounded-xl border border-slate-200 py-2.5 pr-4 pl-10 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                style={{
+                  width: '100%',
+                  padding: '10px 14px 10px 38px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
           </div>
@@ -99,35 +158,61 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           <button
             type="submit"
             disabled={isLoading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-50"
+            style={{
+              marginTop: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              borderRadius: '10px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              padding: '11px',
+              fontSize: '13px',
+              fontWeight: 600,
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
-            {isLoading ? 'Verifying...' : 'Sign In'}
-            <ArrowRight className="h-3.5 w-3.5" />
+            {isLoading ? 'Authenticating...' : 'Sign In'}
+            <ArrowRight style={{ width: '14px', height: '14px' }} />
           </button>
         </form>
 
-        {/* 1-Click Demo Login */}
-        <div className="relative my-6 text-center">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-100" />
+        <div style={{ position: 'relative', margin: '22px 0', textAlign: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
+            <div style={{ width: '100%', borderTop: '1px solid #f1f4f9' }} />
           </div>
-          <span className="relative bg-white px-3 text-[11px] text-slate-400">
-            or quick access
+          <span style={{ position: 'relative', backgroundColor: '#ffffff', padding: '0 10px', fontSize: '11px', color: '#94a3b8' }}>
+            or preview immediately
           </span>
         </div>
 
         <button
           type="button"
           onClick={handleDemo}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50/60 py-2.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100/70"
+          style={{
+            display: 'flex',
+            width: '100%',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            borderRadius: '10px',
+            backgroundColor: '#eff6ff',
+            color: '#1d4ed8',
+            border: '1px solid #dbeafe',
+            padding: '10px',
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
         >
-          <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-          Instant Demo Access (Executive CIO)
+          Instant Demo Access (Alex Morgan)
         </button>
 
-        <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
-          <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-          <span>Encrypted Session • MoBack Dashboard v1.0</span>
+        <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8' }}>
+          <ShieldCheck style={{ width: '14px', height: '14px', color: '#10b981' }} />
+          <span>Encrypted Session • Verified Portfolio</span>
         </div>
       </div>
     </div>

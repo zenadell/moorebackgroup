@@ -1,14 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Key, RefreshCw, CheckCircle2, Shield, Globe, Sliders } from 'lucide-react';
+import { User, Bell, Shield, Sliders, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '@/lib/auth/context';
 
 export function SettingsView() {
-  const [provider, setProvider] = useState<'mock' | 'finnhub' | 'polygon' | 'alphavantage'>('mock');
-  const [apiKey, setApiKey] = useState('');
-  const [savedSuccess, setSavedSuccess] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState('30s');
+  const { user } = useAuth();
+  const [name, setName] = useState(user?.name || 'Alex Morgan');
+  const [email, setEmail] = useState(user?.email || 'alex.morgan@client.com');
+  const [phone, setPhone] = useState('+1 (555) 392-8104');
   const [currency, setCurrency] = useState('USD');
+  const [refreshRate, setRefreshRate] = useState('Real-time');
+  const [dailyDigest, setDailyDigest] = useState(true);
+  const [volatilityAlert, setVolatilityAlert] = useState(true);
+  const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,122 +22,273 @@ export function SettingsView() {
   };
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div style={{ maxWidth: '780px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
-        <h2 className="text-xl font-bold text-slate-900">Dashboard Settings</h2>
-        <p className="text-xs text-slate-500">Configure market data feeds, API connections, and display preferences</p>
+        <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Account & Portfolio Settings</h2>
+        <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
+          Manage your personal investor profile, notification alerts, and portfolio preferences
+        </p>
       </div>
 
       {savedSuccess && (
-        <div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
-          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          Settings updated successfully! Live market integration ready.
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: '#e6f9f0',
+            color: '#065f46',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            fontSize: '13px',
+            fontWeight: 600,
+          }}
+        >
+          <CheckCircle2 style={{ width: '16px', height: '16px', color: '#10b981' }} />
+          Preferences saved successfully!
         </div>
       )}
 
-      {/* Market Data API Connector */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-          <Key className="h-4 w-4 text-blue-600" />
+      {/* Profile Card */}
+      <div
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          border: '1px solid #e9edf3',
+          padding: '22px 24px',
+          boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f4f9', paddingBottom: '14px' }}>
+          <User style={{ width: '18px', height: '18px', color: '#2563eb' }} />
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Live Market Data API Integration</h3>
-            <p className="text-[11px] text-slate-400">
-              Switch from initial static snapshot to live market streaming when ready
-            </p>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>Investor Profile</h3>
+            <p style={{ fontSize: '11px', color: '#64748b' }}>Account ID: #MO-88429 • Tier 1 Managed Portfolio</p>
           </div>
         </div>
 
-        <form onSubmit={handleSave} className="mt-4 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-700">Market Feed Provider</label>
-            <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                { id: 'mock', name: 'Mock Baseline', note: '$120.57M Target' },
-                { id: 'finnhub', name: 'Finnhub API', note: 'Real-time WebSocket' },
-                { id: 'polygon', name: 'Polygon.io', note: 'Tick-level Equities' },
-                { id: 'alphavantage', name: 'Alpha Vantage', note: 'End of Day & Intraday' },
-              ].map((p) => (
-                <button
-                  type="button"
-                  key={p.id}
-                  onClick={() => setProvider(p.id as typeof provider)}
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    provider === p.id
-                      ? 'border-blue-500 bg-blue-50/50 shadow-xs'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <p className="text-xs font-bold text-slate-900">{p.name}</p>
-                  <p className="text-[10px] text-slate-500">{p.note}</p>
-                </button>
-              ))}
+        <form onSubmit={handleSave} style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Full Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={{
+                  width: '100%',
+                  marginTop: '4px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Email Address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{
+                  width: '100%',
+                  marginTop: '4px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-700">API Key / Secret Token</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Phone Number</label>
             <input
-              type="password"
-              placeholder={provider === 'mock' ? 'Not needed for mock mode' : 'Enter your API key here...'}
-              value={apiKey}
-              disabled={provider === 'mock'}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 disabled:bg-slate-100 disabled:cursor-not-allowed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              type="text"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              style={{
+                width: '100%',
+                marginTop: '4px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                fontSize: '13px',
+                color: '#0f172a',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
             />
-            <p className="mt-1 text-[11px] text-slate-400">
-              When live API key is supplied, prices for all 17 companies update in real-time.
-            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Auto-Refresh Interval</label>
-              <select
-                value={refreshInterval}
-                onChange={(e) => setRefreshInterval(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none"
-              >
-                <option value="15s">Every 15 Seconds</option>
-                <option value="30s">Every 30 Seconds</option>
-                <option value="60s">Every 60 Seconds</option>
-                <option value="manual">Manual Refresh Only</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Base Currency</label>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none"
-              >
-                <option value="USD">USD ($)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="pt-2">
+          <div style={{ paddingTop: '8px' }}>
             <button
               type="submit"
-              className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition-colors"
+              style={{
+                backgroundColor: '#2563eb',
+                color: '#ffffff',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+              }}
             >
-              Save Configuration
+              Update Profile
             </button>
           </div>
         </form>
       </div>
 
-      {/* Target Balance Lock Notice */}
-      <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
-        <div className="flex items-center gap-2 text-blue-900">
-          <Shield className="h-4 w-4 text-blue-600" />
-          <h4 className="text-xs font-bold">Hard-Locked Baseline Balance ($120.57M)</h4>
+      {/* Portfolio Preferences Card */}
+      <div
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          border: '1px solid #e9edf3',
+          padding: '22px 24px',
+          boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f4f9', paddingBottom: '14px' }}>
+          <Sliders style={{ width: '18px', height: '18px', color: '#2563eb' }} />
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>Portfolio Preferences</h3>
+            <p style={{ fontSize: '11px', color: '#64748b' }}>Configure valuation displays and market intervals</p>
+          </div>
         </div>
-        <p className="mt-1 text-xs text-blue-700/80 leading-relaxed">
-          The dashboard is pre-configured with a total balance of exactly <strong>$120,570,000.00</strong> across your 17 companies and liquid cash reserves. Once live market feeds are turned on, positions will dynamically fluctuate based on live exchange quotes.
-        </p>
+
+        <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Display Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              style={{
+                width: '100%',
+                marginTop: '4px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                fontSize: '13px',
+                color: '#0f172a',
+                outline: 'none',
+                boxSizing: 'border-box',
+                backgroundColor: '#ffffff',
+              }}
+            >
+              <option value="USD">USD ($) - US Dollar</option>
+              <option value="EUR">EUR (€) - Euro</option>
+              <option value="GBP">GBP (£) - British Pound</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Valuation Sync</label>
+            <select
+              value={refreshRate}
+              onChange={(e) => setRefreshRate(e.target.value)}
+              style={{
+                width: '100%',
+                marginTop: '4px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                fontSize: '13px',
+                color: '#0f172a',
+                outline: 'none',
+                boxSizing: 'border-box',
+                backgroundColor: '#ffffff',
+              }}
+            >
+              <option value="Real-time">Real-time Streaming</option>
+              <option value="60s">Every 60 Seconds</option>
+              <option value="Daily">Daily Close Snapshot</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Notifications & Security Card */}
+      <div
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          border: '1px solid #e9edf3',
+          padding: '22px 24px',
+          boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f4f9', paddingBottom: '14px' }}>
+          <Bell style={{ width: '18px', height: '18px', color: '#2563eb' }} />
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>Alerts & Security</h3>
+            <p style={{ fontSize: '11px', color: '#64748b' }}>Customized price and portfolio notifications</p>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#334155', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={dailyDigest}
+              onChange={(e) => setDailyDigest(e.target.checked)}
+              style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+            />
+            <span>Receive daily portfolio summary & performance report via email</span>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#334155', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={volatilityAlert}
+              onChange={(e) => setVolatilityAlert(e.target.checked)}
+              style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+            />
+            <span>Notify me of significant price movements (&gt; 3% intraday) across my 17 holdings</span>
+          </label>
+        </div>
+
+        <div
+          style={{
+            marginTop: '18px',
+            paddingTop: '14px',
+            borderTop: '1px solid #f1f4f9',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Shield style={{ width: '16px', height: '16px', color: '#10b981' }} />
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+              Two-Factor Authentication: Enabled
+            </span>
+          </div>
+          <button
+            type="button"
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+              backgroundColor: '#ffffff',
+              fontSize: '12px',
+              color: '#334155',
+              cursor: 'pointer',
+            }}
+          >
+            Manage Security
+          </button>
+        </div>
       </div>
     </div>
   );

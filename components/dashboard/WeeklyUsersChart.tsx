@@ -24,17 +24,25 @@ export function WeeklyUsersChart() {
   ];
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-slate-900">New users per week</h3>
-        <span className="text-[11px] font-medium text-slate-400">Activity</span>
+    <div
+      style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '14px',
+        border: '1px solid #e9edf3',
+        padding: '18px 20px',
+        boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
+          New users per week
+        </h3>
       </div>
 
-      <div className="relative mt-4 h-52 w-full max-w-full overflow-hidden" style={{ minHeight: '200px' }}>
+      <div style={{ position: 'relative', marginTop: '12px', height: '180px', width: '100%' }}>
         <svg
           viewBox="0 0 310 140"
-          className="h-full w-full overflow-visible"
-          style={{ width: '100%', height: '100%', maxHeight: '210px' }}
+          style={{ width: '100%', height: '100%', display: 'block' }}
           preserveAspectRatio="xMidYMid meet"
         >
           {/* Y Axis Grid lines */}
@@ -79,7 +87,7 @@ export function WeeklyUsersChart() {
                   return (
                     <g
                       key={barIdx}
-                      className="cursor-pointer transition-opacity"
+                      style={{ cursor: 'pointer' }}
                       onMouseEnter={() => setHoveredBar(uniqueIdx)}
                       onMouseLeave={() => setHoveredBar(null)}
                     >
@@ -110,12 +118,6 @@ export function WeeklyUsersChart() {
             );
           })}
         </svg>
-
-        {hoveredBar !== null && (
-          <div className="pointer-events-none absolute top-0 right-2 rounded-md bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm z-10">
-            Active metric volume recorded
-          </div>
-        )}
       </div>
     </div>
   );
