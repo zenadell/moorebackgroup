@@ -94,7 +94,6 @@ function DashboardContent() {
               {/* Bottom Table: Recent Transactions / Portfolio Shares */}
               <HoldingsTable
                 holdings={INITIAL_HOLDINGS}
-                transactions={RECENT_TRANSACTIONS}
                 searchFilter={searchQuery}
               />
             </div>
@@ -116,7 +115,6 @@ function DashboardContent() {
               </div>
               <HoldingsTable
                 holdings={INITIAL_HOLDINGS}
-                transactions={RECENT_TRANSACTIONS}
                 searchFilter={searchQuery}
               />
             </div>
