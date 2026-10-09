@@ -33,18 +33,24 @@ function DashboardContent() {
         const res = await fetch('/api/stocks/quotes');
         if (!res.ok) return;
         const data = await res.json();
-        if (data.success && data.quotes && isMounted) {
+        if (data.success && data.quotes && Object.keys(data.quotes).length > 0 && isMounted) {
           setHoldings((prev) =>
             prev.map((h) => {
               const live = data.quotes[h.ticker];
               if (!live) return h;
+              const livePrice = Number(live.price);
+              const shares = Math.max(1, Math.round(h.totalValue / livePrice));
+              const recalculatedValue = Number((shares * livePrice).toFixed(2));
+
               return {
                 ...h,
-                price: live.price,
-                change: live.change,
-                changePercent: live.changePercent,
+                price: livePrice,
+                change: Number(live.change),
+                changePercent: Number(live.changePercent),
                 prePostPrice: live.prePostPrice ?? h.prePostPrice,
                 prePostChange: live.prePostChange ?? h.prePostChange,
+                shares: shares,
+                totalValue: recalculatedValue,
               };
             })
           );
