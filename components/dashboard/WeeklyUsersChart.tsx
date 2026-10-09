@@ -15,7 +15,6 @@ export function WeeklyUsersChart() {
   ];
 
   // Bars corresponding to the exact tick columns in Image 1: 1, 6, 14, 25, 28
-  // With pairs of subtle comparison bars as seen in Image 1
   const barGroups = [
     { label: '1', bars: [{ val: 175, h: 70, x: 75 }, { val: 120, h: 48, x: 90 }] },
     { label: '6', bars: [{ val: 140, h: 56, x: 125 }, { val: 210, h: 84, x: 140 }] },
@@ -31,11 +30,12 @@ export function WeeklyUsersChart() {
         <span className="text-[11px] font-medium text-slate-400">Activity</span>
       </div>
 
-      <div className="relative mt-4 h-52 w-full">
+      <div className="relative mt-4 h-52 w-full max-w-full overflow-hidden" style={{ minHeight: '200px' }}>
         <svg
           viewBox="0 0 310 140"
           className="h-full w-full overflow-visible"
-          preserveAspectRatio="none"
+          style={{ width: '100%', height: '100%', maxHeight: '210px' }}
+          preserveAspectRatio="xMidYMid meet"
         >
           {/* Y Axis Grid lines */}
           {yAxisTicks.map((tick, i) => (
@@ -53,7 +53,9 @@ export function WeeklyUsersChart() {
                 x="30"
                 y={tick.y + 3}
                 textAnchor="end"
-                className="fill-slate-400 text-[8.5px] font-sans"
+                fontSize="7.5"
+                fill="#94a3b8"
+                style={{ fontSize: '7.5px', fontFamily: 'system-ui, sans-serif' }}
               >
                 {tick.label}
               </text>
@@ -87,13 +89,7 @@ export function WeeklyUsersChart() {
                         width="11"
                         height={bar.h}
                         rx="2.5"
-                        className={`transition-colors ${
-                          isHovered
-                            ? 'fill-blue-500'
-                            : barIdx === 0
-                            ? 'fill-blue-600'
-                            : 'fill-blue-400/80'
-                        }`}
+                        fill={isHovered ? '#3b82f6' : barIdx === 0 ? '#2563eb' : '#60a5fa'}
                       />
                     </g>
                   );
@@ -104,7 +100,9 @@ export function WeeklyUsersChart() {
                   x={centerX + 5.5}
                   y={130}
                   textAnchor="middle"
-                  className="fill-slate-400 text-[9px] font-medium"
+                  fontSize="8"
+                  fill="#94a3b8"
+                  style={{ fontSize: '8px', fontFamily: 'system-ui, sans-serif' }}
                 >
                   {group.label}
                 </text>
@@ -114,7 +112,7 @@ export function WeeklyUsersChart() {
         </svg>
 
         {hoveredBar !== null && (
-          <div className="pointer-events-none absolute top-0 right-2 rounded-md bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm">
+          <div className="pointer-events-none absolute top-0 right-2 rounded-md bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm z-10">
             Active metric volume recorded
           </div>
         )}

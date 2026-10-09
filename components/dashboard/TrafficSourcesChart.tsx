@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SECTOR_ALLOCATIONS } from '@/lib/data/holdings';
 
 export function TrafficSourcesChart() {
   const [hoveredSlice, setHoveredSlice] = useState<number | null>(null);
@@ -38,21 +37,28 @@ export function TrafficSourcesChart() {
       </div>
 
       <div className="mt-4 flex flex-col items-center justify-center">
-        {/* SVG Donut Ring */}
-        <div className="relative h-36 w-36">
-          <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+        {/* SVG Donut Ring with strict size boundary */}
+        <div
+          className="relative flex items-center justify-center"
+          style={{ width: '140px', height: '140px', maxWidth: '140px', maxHeight: '140px' }}
+        >
+          <svg
+            className="-rotate-90"
+            viewBox="0 0 100 100"
+            style={{ width: '140px', height: '140px', display: 'block' }}
+          >
             {slices.map((slice, i) => (
               <circle
                 key={i}
                 cx="50"
                 cy="50"
                 r={radius}
-                fill="transparent"
+                fill="none"
                 stroke={slice.color}
-                strokeWidth={hoveredSlice === i ? "15" : "13"}
+                strokeWidth={hoveredSlice === i ? "14" : "12"}
                 strokeDasharray={slice.strokeDasharray}
                 strokeDashoffset={slice.strokeDashoffset}
-                className="cursor-pointer transition-all duration-200 hover:opacity-90"
+                className="cursor-pointer transition-all duration-200"
                 onMouseEnter={() => setHoveredSlice(i)}
                 onMouseLeave={() => setHoveredSlice(null)}
               />
@@ -60,20 +66,23 @@ export function TrafficSourcesChart() {
           </svg>
 
           {/* Central Donut Hole */}
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <div
+            className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center"
+            style={{ width: '140px', height: '140px' }}
+          >
             {hoveredSlice !== null ? (
               <>
-                <span className="text-xs font-bold text-slate-900">
+                <span className="text-xs font-bold text-slate-900 leading-tight">
                   {displaySectors[hoveredSlice].percent}%
                 </span>
-                <span className="text-[9px] text-slate-500 truncate max-w-[60px]">
+                <span className="text-[9px] text-slate-500 truncate max-w-[65px] leading-tight">
                   {displaySectors[hoveredSlice].name}
                 </span>
               </>
             ) : (
               <>
-                <span className="text-sm font-bold text-slate-900">100%</span>
-                <span className="text-[9px] text-slate-400">Allocated</span>
+                <span className="text-sm font-bold text-slate-900 leading-tight">100%</span>
+                <span className="text-[9px] text-slate-400 leading-tight">Allocated</span>
               </>
             )}
           </div>
@@ -91,7 +100,7 @@ export function TrafficSourcesChart() {
               onMouseLeave={() => setHoveredSlice(null)}
             >
               <span
-                className="h-2.5 w-2.5 rounded-full"
+                className="h-2.5 w-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: sec.color }}
               />
               <span className="font-medium text-slate-700">{sec.name}</span>
