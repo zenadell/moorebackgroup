@@ -116,13 +116,19 @@ export function Header({ searchQuery, onSearchChange, onOpenAddSymbol }: HeaderP
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="flex items-center gap-2 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           >
-            <div className="relative h-8 w-8 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+            <div
+              className="relative h-8 w-8 overflow-hidden rounded-full border border-slate-200 bg-slate-100"
+              style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
+            >
               {user?.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={user.avatarUrl}
                   alt={user.name}
+                  width={32}
+                  height={32}
                   className="h-full w-full object-cover"
+                  style={{ width: '32px', height: '32px', objectFit: 'cover' }}
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-blue-100 text-xs font-semibold text-blue-700">

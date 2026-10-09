@@ -53,7 +53,10 @@ function DashboardContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
+    <div
+      className="min-h-screen bg-slate-50 flex flex-col text-slate-900"
+      style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', color: '#0f172a' }}
+    >
       {/* Top Header */}
       <Header
         searchQuery={searchQuery}
@@ -61,7 +64,10 @@ function DashboardContent() {
         onOpenAddSymbol={() => setIsAddModalOpen(true)}
       />
 
-      <div className="flex flex-1">
+      <div
+        className="flex flex-1"
+        style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 'calc(100vh - 4rem)' }}
+      >
         {/* Left Navigation Sidebar */}
         <Sidebar
           currentTab={currentTab}
@@ -70,16 +76,19 @@ function DashboardContent() {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl">
+        <main
+          className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl"
+          style={{ flex: 1, padding: '1.75rem', overflowY: 'auto', backgroundColor: '#f8fafc' }}
+        >
           {currentTab === 'overview' && (
-            <div className="space-y-6">
+            <div className="space-y-6" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               {/* Header Title (Matches "Overview" in Image 1) */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900" style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a' }}>
                     Overview
                   </h1>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5" style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                     MoBack Executive Portfolio & Corporate Holdings Terminal
                   </p>
                 </div>
@@ -89,7 +98,14 @@ function DashboardContent() {
               <StatCards summary={dynamicSummary} />
 
               {/* 3 Middle Visualization Cards (Revenue Area, Weekly Users Bar, Traffic Donut) */}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div
+                className="grid grid-cols-1 gap-4 lg:grid-cols-3"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  gap: '1rem',
+                }}
+              >
                 <RevenueChart currencySymbol="$" />
                 <WeeklyUsersChart />
                 <TrafficSourcesChart />

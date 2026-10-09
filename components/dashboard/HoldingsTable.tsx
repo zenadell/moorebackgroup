@@ -36,7 +36,10 @@ export function HoldingsTable({
   const sectors = ['ALL', ...Array.from(new Set(holdings.map((h) => h.sector)))];
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
+    <div
+      className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs"
+      style={{ backgroundColor: '#ffffff', borderRadius: '1rem', border: '1px solid #e2e8f0', padding: '1.25rem' }}
+    >
       {/* Table Header and View Switcher */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4">
         <div>
