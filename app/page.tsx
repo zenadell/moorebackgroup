@@ -208,11 +208,15 @@ function DashboardContent() {
                   <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#64748b' }}>Equity Positions:</span>
-                      <strong style={{ color: '#0f172a' }}>$115,920,850.00</strong>
+                      <strong style={{ color: '#0f172a' }}>
+                        ${holdings.reduce((sum, h) => sum + h.totalValue, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#64748b' }}>Cash Reserves:</span>
-                      <strong style={{ color: '#0f172a' }}>$4,649,150.00</strong>
+                      <strong style={{ color: '#0f172a' }}>
+                        ${Math.max(0, 120570000 - holdings.reduce((sum, h) => sum + h.totalValue, 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f1f4f9', paddingTop: '8px', marginTop: '4px' }}>
                       <span style={{ fontWeight: 600, color: '#0f172a' }}>Total Portfolio Balance:</span>

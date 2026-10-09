@@ -35,15 +35,7 @@ export function HoldingsTable({
   const sectors = ['ALL', ...Array.from(new Set(holdings.map((h) => h.sector)))];
 
   return (
-    <div
-      style={{
-        backgroundColor: '#ffffff',
-        borderRadius: '14px',
-        border: '1px solid #e9edf3',
-        padding: '20px 24px',
-        boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
-      }}
-    >
+    <div className="holdings-card">
       {/* Table Header */}
       <div className="holdings-header">
         <div>
@@ -124,25 +116,43 @@ export function HoldingsTable({
         </div>
       </div>
 
+      {/* Mobile Swipe Hint */}
+      <div
+        className="sm:hidden"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: '8px',
+          paddingBottom: '2px',
+          color: '#94a3b8',
+          fontSize: '11px',
+        }}
+      >
+        <span>⇄ Swipe to view all 8 columns</span>
+        <span>Pinned: Company</span>
+      </div>
+
       {/* 17 Companies Table */}
       <div
         style={{
-          marginTop: '12px',
+          marginTop: '8px',
           overflowX: 'auto',
           WebkitOverflowScrolling: 'touch',
+          position: 'relative',
         }}
       >
         <table style={{ width: '100%', minWidth: '820px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
             <tr style={{ color: '#94a3b8', fontSize: '11px', borderBottom: '1px solid #f1f4f9', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              <th style={{ padding: '12px 16px 12px 0', fontWeight: 600 }}>Company / Ticker</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600 }}>Sector</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>Share Price</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>24h Change</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>Pre / Post Mkt</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>Shares Held</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>Total Value</th>
-              <th style={{ padding: '12px 0 12px 16px', textAlign: 'right', fontWeight: 600 }}>Portfolio Weight</th>
+              <th className="sticky-col-header" style={{ padding: '12px 16px 12px 8px', fontWeight: 600, whiteSpace: 'nowrap', minWidth: '160px' }}>Company / Ticker</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, whiteSpace: 'nowrap' }}>Sector</th>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Share Price</th>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>24h Change</th>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Pre / Post Mkt</th>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Shares Held</th>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Total Value</th>
+              <th style={{ padding: '12px 8px 12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Portfolio Weight</th>
             </tr>
           </thead>
           <tbody>
@@ -151,10 +161,11 @@ export function HoldingsTable({
               return (
                 <tr
                   key={h.id}
+                  className="table-row-hover"
                   style={{ borderBottom: '1px solid #f8fafc', color: '#1e293b' }}
                 >
-                  {/* Company Ticker & Name */}
-                  <td style={{ padding: '14px 16px 14px 0' }}>
+                  {/* Company Ticker & Name - Sticky pinned */}
+                  <td className="sticky-col" style={{ padding: '14px 16px 14px 8px', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <div
                         style={{
@@ -185,7 +196,7 @@ export function HoldingsTable({
                   </td>
 
                   {/* Sector */}
-                  <td style={{ padding: '14px 16px' }}>
+                  <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                     <span
                       style={{
                         backgroundColor: '#f1f5f9',
@@ -201,12 +212,12 @@ export function HoldingsTable({
                   </td>
 
                   {/* Share Price */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>
                     ${h.price.toFixed(2)}
                   </td>
 
                   {/* 24h Change */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <span
                       style={{
                         backgroundColor: isPositive ? '#e6f9f0' : '#fee2e2',
@@ -232,7 +243,7 @@ export function HoldingsTable({
                   </td>
 
                   {/* Pre/Post Market (as seen in TradingView screenshot) */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: '11px', color: '#64748b' }}>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>
                     {h.prePostPrice !== undefined ? (
                       <div>
                         <span>${h.prePostPrice.toFixed(2)} </span>
@@ -247,17 +258,17 @@ export function HoldingsTable({
                   </td>
 
                   {/* Position Shares */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', color: '#475569', fontWeight: 500 }}>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {h.shares.toLocaleString()}
                   </td>
 
                   {/* Total Value */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>
                     ${h.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
 
                   {/* Portfolio Weight */}
-                  <td style={{ padding: '14px 0 14px 16px', textAlign: 'right' }}>
+                  <td style={{ padding: '14px 8px 14px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                       <div
                         style={{
@@ -289,8 +300,28 @@ export function HoldingsTable({
         </table>
 
         {filteredHoldings.length === 0 && (
-          <div style={{ padding: '32px 0', textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>
-            No companies found matching &ldquo;{searchFilter}&rdquo;
+          <div style={{ padding: '36px 0', textAlign: 'center', fontSize: '13px', color: '#64748b' }}>
+            <p style={{ margin: 0, fontWeight: 500 }}>
+              No companies found matching &ldquo;{searchFilter}&rdquo;
+            </p>
+            {selectedSector !== 'ALL' && (
+              <button
+                onClick={() => setSelectedSector('ALL')}
+                style={{
+                  marginTop: '10px',
+                  padding: '6px 14px',
+                  backgroundColor: '#eff6ff',
+                  color: '#2563eb',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Show all sectors
+              </button>
+            )}
           </div>
         )}
       </div>

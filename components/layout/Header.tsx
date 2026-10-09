@@ -90,47 +90,88 @@ export function Header({
               whiteSpace: 'nowrap',
             }}
           >
-            Orion Dashboard
+            <span className="hidden md:inline">Orion Dashboard</span>
+            <span className="hidden min-[380px]:inline md:hidden">Orion</span>
           </span>
         </div>
       </div>
 
-      {/* Center Search Input (Matching Image 1's pill search) */}
+      {/* Center Search Input (Pristine pill search matching reference) */}
       <div
-        className="relative mx-4 flex max-w-md flex-1 items-center"
-        style={{ maxWidth: '420px', flex: 1, position: 'relative' }}
+        className="mx-2 sm:mx-3.5"
+        style={{
+          position: 'relative',
+          flex: 1,
+          maxWidth: '440px',
+          minWidth: 0,
+        }}
       >
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400"
-          style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}
+          style={{
+            position: 'absolute',
+            left: '14px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#94a3b8',
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
         >
-          <Search className="h-4 w-4" style={{ width: '15px', height: '15px' }} />
+          <Search style={{ width: '15px', height: '15px', display: 'block' }} />
         </div>
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search"
-          className="w-full rounded-full border border-slate-200 bg-slate-50/80 py-1.5 pr-4 pl-10 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none"
+          aria-label="Search companies, tickers or sectors"
           style={{
             width: '100%',
+            height: '36px',
             borderRadius: '9999px',
             backgroundColor: '#f1f4f9',
             border: '1px solid #e2e8f0',
-            paddingTop: '7px',
-            paddingBottom: '7px',
-            paddingLeft: '36px',
-            paddingRight: '16px',
+            paddingLeft: '40px',
+            paddingRight: searchQuery ? '32px' : '16px',
             fontSize: '13px',
             color: '#0f172a',
             outline: 'none',
+            boxSizing: 'border-box',
+            transition: 'border-color 0.15s, background-color 0.15s',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.backgroundColor = '#ffffff';
+            e.currentTarget.style.borderColor = '#93c5fd';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.backgroundColor = '#f1f4f9';
+            e.currentTarget.style.borderColor = '#e2e8f0';
           }}
         />
         {searchQuery && (
           <button
             onClick={() => onSearchChange('')}
-            className="absolute right-3 text-xs text-slate-400 hover:text-slate-600"
-            style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+            style={{
+              position: 'absolute',
+              right: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#94a3b8',
+              fontSize: '13px',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '18px',
+              height: '18px',
+            }}
+            aria-label="Clear search"
           >
             ✕
           </button>

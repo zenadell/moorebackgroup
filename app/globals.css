@@ -86,6 +86,13 @@ body {
   }
 }
 
+@media (max-width: 640px) {
+  header {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}
+
 /* 4 KPI Stat Cards Grid */
 .stat-cards-grid {
   display: grid;
@@ -101,11 +108,80 @@ body {
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .stat-cards-grid {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
+}
+
+/* KPI Card & Value Responsive Styling */
+.kpi-card {
+  background-color: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e9edf3;
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.03);
+}
+
+@media (max-width: 640px) {
+  .kpi-card {
+    padding: 12px 12px;
+    border-radius: 12px;
+  }
+}
+
+.kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 640px) {
+  .kpi-value {
+    font-size: 20px !important;
+  }
+}
+
+/* Holdings Card Responsive */
+.holdings-card {
+  background-color: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e9edf3;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.03);
+}
+
+@media (max-width: 640px) {
+  .holdings-card {
+    padding: 14px 12px;
+    border-radius: 12px;
+  }
+}
+
+/* Sticky Column for Horizontal Table Scrolling on Mobile */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 5;
+  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.06);
+}
+
+.sticky-col-header {
+  position: sticky;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 10;
+  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.06);
+}
+
+.table-row-hover:hover {
+  background-color: #f8fafc;
+}
+
+.table-row-hover:hover .sticky-col {
+  background-color: #f8fafc;
 }
 
 /* 3 Middle Visualization Cards Row */
