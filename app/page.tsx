@@ -18,6 +18,7 @@ function DashboardContent() {
   const { isAuthenticated } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // If not authenticated, show user login
   if (!isAuthenticated) {
@@ -39,25 +40,24 @@ function DashboardContent() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onNavigateSettings={() => setCurrentTab('settings')}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 'calc(100vh - 60px)' }}>
-        {/* Left Navigation Sidebar */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 'calc(100vh - 60px)', width: '100%' }}>
+        {/* Left Navigation Sidebar (Desktop + Mobile Drawer) */}
         <Sidebar
           currentTab={currentTab}
-          onSelectTab={setCurrentTab}
+          onSelectTab={(tab) => {
+            setCurrentTab(tab);
+            setIsMobileMenuOpen(false);
+          }}
           holdingsCount={INITIAL_HOLDINGS.length}
+          isOpenMobile={isMobileMenuOpen}
+          onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
 
-        {/* Main Content Area */}
-        <main
-          style={{
-            flex: 1,
-            padding: '24px 28px',
-            overflowY: 'auto',
-            maxWidth: '1240px',
-          }}
-        >
+        {/* Main Content Area - Expands full width without dead space on right */}
+        <main className="dashboard-main">
           {currentTab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Header Title (Matches "Overview" in Image 1) */}
@@ -79,13 +79,7 @@ function DashboardContent() {
               <StatCards summary={PORTFOLIO_SUMMARY} />
 
               {/* 3 Middle Visualization Cards Row */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1.2fr 0.9fr 0.9fr',
-                  gap: '16px',
-                }}
-              >
+              <div className="charts-grid">
                 <RevenueChart currencySymbol="€" />
                 <WeeklyUsersChart />
                 <TrafficSourcesChart />
@@ -146,7 +140,7 @@ function DashboardContent() {
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="reports-grid">
                 <div
                   style={{
                     backgroundColor: '#ffffff',

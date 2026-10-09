@@ -1,16 +1,22 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2 } from 'lucide-react';
+import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
 
 interface HeaderProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onNavigateSettings?: () => void;
+  onToggleMobileMenu?: () => void;
 }
 
-export function Header({ searchQuery, onSearchChange, onNavigateSettings }: HeaderProps) {
+export function Header({
+  searchQuery,
+  onSearchChange,
+  onNavigateSettings,
+  onToggleMobileMenu,
+}: HeaderProps) {
   const { user, logout } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showPresentationMenu, setShowPresentationMenu] = useState(false);
@@ -19,7 +25,7 @@ export function Header({ searchQuery, onSearchChange, onNavigateSettings }: Head
 
   return (
     <header
-      className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white px-5 md:px-8"
+      className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white"
       style={{
         height: '60px',
         backgroundColor: '#ffffff',
@@ -27,37 +33,66 @@ export function Header({ searchQuery, onSearchChange, onNavigateSettings }: Head
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingLeft: '24px',
-        paddingRight: '24px',
+        paddingLeft: '16px',
+        paddingRight: '16px',
       }}
     >
-      {/* Left Branding (Matching Image 1: Blue circle icon + Orion Dashboard) */}
-      <div className="flex items-center gap-2.5" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white shadow-xs"
+      {/* Left Branding & Mobile Hamburger */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Mobile menu hamburger button */}
+        <button
+          onClick={onToggleMobileMenu}
+          className="mobile-menu-btn"
+          aria-label="Open Navigation Menu"
           style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '9999px',
-            backgroundColor: '#2563eb',
-            color: '#ffffff',
-            display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: '#f1f4f9',
+            color: '#334155',
+            cursor: 'pointer',
+            padding: 0,
           }}
         >
-          <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '18px', height: '18px' }}>
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 3a9 9 0 0 1 9 9" strokeLinecap="round" />
-            <circle cx="12" cy="12" r="3" fill="currentColor" />
-          </svg>
+          <Menu style={{ width: '18px', height: '18px' }} />
+        </button>
+
+        {/* Brand Icon + Name */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '9999px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '18px', height: '18px' }}>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 3a9 9 0 0 1 9 9" strokeLinecap="round" />
+              <circle cx="12" cy="12" r="3" fill="currentColor" />
+            </svg>
+          </div>
+          <span
+            style={{
+              fontSize: '16px',
+              fontWeight: 700,
+              color: '#0f172a',
+              letterSpacing: '-0.02em',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Orion Dashboard
+          </span>
         </div>
-        <span
-          className="text-base font-bold tracking-tight text-slate-900"
-          style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}
-        >
-          Orion Dashboard
-        </span>
       </div>
 
       {/* Center Search Input (Matching Image 1's pill search) */}

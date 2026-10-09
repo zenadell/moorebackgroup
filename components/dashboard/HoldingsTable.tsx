@@ -41,15 +41,7 @@ export function HoldingsTable({
       }}
     >
       {/* Table Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: '1px solid #f1f4f9',
-          paddingBottom: '14px',
-        }}
-      >
+      <div className="holdings-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
@@ -73,9 +65,9 @@ export function HoldingsTable({
           </p>
         </div>
 
-        {/* Sector Quick Pills */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
+        {/* Sector Quick Pills (Scrollable on small screens) */}
+        <div className="sector-scroll-container">
+          <span style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
             <Filter style={{ width: '12px', height: '12px' }} /> Sector:
           </span>
           {sectors.map((sec) => (
@@ -92,6 +84,8 @@ export function HoldingsTable({
                 backgroundColor: selectedSector === sec ? '#0f172a' : '#f1f4f9',
                 color: selectedSector === sec ? '#ffffff' : '#475569',
                 transition: 'all 0.15s ease',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
               }}
             >
               {sec}
@@ -101,8 +95,14 @@ export function HoldingsTable({
       </div>
 
       {/* 17 Companies Table */}
-      <div style={{ marginTop: '12px', overflowX: 'auto' }}>
-        <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '13px' }}>
+      <div
+        style={{
+          marginTop: '12px',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        <table style={{ width: '100%', minWidth: '820px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
             <tr style={{ color: '#94a3b8', fontSize: '11px', borderBottom: '1px solid #f1f4f9', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
               <th style={{ padding: '12px 16px 12px 0', fontWeight: 600 }}>Company / Ticker</th>

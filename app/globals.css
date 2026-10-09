@@ -65,3 +65,144 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* ==========================================================
+   Responsive Layout & Dashboard Grids
+   ========================================================== */
+
+/* Main Content Container - stretches full width, no awkward right gap */
+.dashboard-main {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 24px 32px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .dashboard-main {
+    padding: 16px 14px;
+  }
+}
+
+/* 4 KPI Stat Cards Grid */
+.stat-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .stat-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .stat-cards-grid {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+/* 3 Middle Visualization Cards Row */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr 0.9fr;
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Reports Tab Grid */
+.reports-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .reports-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
+/* Settings Form Two-Column Grid */
+.settings-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  .settings-two-col {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* Holdings Table Header Responsive */
+.holdings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f1f4f9;
+  padding-bottom: 14px;
+  gap: 12px;
+}
+
+@media (max-width: 860px) {
+  .holdings-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+/* Sector Quick Filter Pills - Horizontally scrollable on mobile */
+.sector-scroll-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+  padding-bottom: 2px;
+}
+.sector-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sidebar Responsive Visibility */
+.desktop-sidebar {
+  display: flex;
+}
+
+@media (max-width: 768px) {
+  .desktop-sidebar {
+    display: none !important;
+  }
+}
+
+.mobile-menu-btn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: inline-flex !important;
+  }
+}
+

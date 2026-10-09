@@ -12,13 +12,7 @@ export function StatCards({ summary }: StatCardsProps) {
   const [showFullNumber, setShowFullNumber] = useState(false);
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-        gap: '16px',
-      }}
-    >
+    <div className="stat-cards-grid">
       {/* Card 1: Total Revenue / Total Balance (Hard-locked $120.57 Million) */}
       <div
         style={{

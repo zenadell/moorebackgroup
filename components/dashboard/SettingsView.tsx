@@ -68,7 +68,7 @@ export function SettingsView() {
         </div>
 
         <form onSubmit={handleSave} style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div className="settings-two-col">
             <div>
               <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Full Name</label>
               <input
@@ -167,7 +167,7 @@ export function SettingsView() {
           </div>
         </div>
 
-        <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div className="settings-two-col" style={{ marginTop: '16px' }}>
           <div>
             <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Display Currency</label>
             <select
