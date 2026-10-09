@@ -70,6 +70,10 @@ export async function GET() {
               source: 'alpaca',
               updatedAt: new Date().toISOString(),
             };
+
+            if (ticker === 'TSM') {
+              quotes['TSMC'] = quotes['TSM'];
+            }
           }
         }
       }
@@ -92,7 +96,7 @@ export async function GET() {
       finnhubTickers.map(async ({ id, symbol }) => {
         try {
           const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`;
-          const res = await fetch(url);
+          const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
           if (res.ok) {
             const data = await res.json();
             if (data.c && data.c > 0) {
