@@ -159,30 +159,14 @@ body {
   }
 }
 
-/* Sticky Column for Horizontal Table Scrolling on Mobile */
-.sticky-col {
-  position: sticky;
-  left: 0;
-  background-color: #ffffff;
-  z-index: 5;
-  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.06);
-}
-
-.sticky-col-header {
-  position: sticky;
-  left: 0;
-  background-color: #ffffff;
-  z-index: 10;
-  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.06);
+.table-row-hover {
+  transition: background-color 0.1s ease;
 }
 
 .table-row-hover:hover {
   background-color: #f8fafc;
 }
 
-.table-row-hover:hover .sticky-col {
-  background-color: #f8fafc;
-}
 
 /* 3 Middle Visualization Cards Row */
 .charts-grid {

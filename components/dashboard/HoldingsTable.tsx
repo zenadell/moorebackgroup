@@ -116,43 +116,25 @@ export function HoldingsTable({
         </div>
       </div>
 
-      {/* Mobile Swipe Hint */}
-      <div
-        className="sm:hidden"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingTop: '8px',
-          paddingBottom: '2px',
-          color: '#94a3b8',
-          fontSize: '11px',
-        }}
-      >
-        <span>⇄ Swipe to view all 8 columns</span>
-        <span>Pinned: Company</span>
-      </div>
-
-      {/* 17 Companies Table */}
+      {/* 17 Companies Table - Fluid executive layout matching previous design without sliding */}
       <div
         style={{
-          marginTop: '8px',
-          overflowX: 'auto',
-          WebkitOverflowScrolling: 'touch',
-          position: 'relative',
+          marginTop: '12px',
+          width: '100%',
+          overflowX: 'hidden',
         }}
       >
-        <table style={{ width: '100%', minWidth: '820px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '13px' }}>
+        <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
             <tr style={{ color: '#94a3b8', fontSize: '11px', borderBottom: '1px solid #f1f4f9', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              <th className="sticky-col-header" style={{ padding: '12px 16px 12px 8px', fontWeight: 600, whiteSpace: 'nowrap', minWidth: '160px' }}>Company / Ticker</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, whiteSpace: 'nowrap' }}>Sector</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Share Price</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>24h Change</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Pre / Post Mkt</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Shares Held</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Total Value</th>
-              <th style={{ padding: '12px 8px 12px 16px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Portfolio Weight</th>
+              <th style={{ padding: '12px 8px 12px 0', fontWeight: 600, whiteSpace: 'nowrap' }}>Company / Ticker</th>
+              <th style={{ padding: '12px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>Sector</th>
+              <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Share Price</th>
+              <th style={{ padding: '12px 0 12px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>24h Change</th>
+              <th className="hidden lg:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Pre / Post Mkt</th>
+              <th className="hidden md:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Shares Held</th>
+              <th className="hidden md:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Total Value</th>
+              <th className="hidden lg:table-cell" style={{ padding: '12px 0 12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Portfolio Weight</th>
             </tr>
           </thead>
           <tbody>
@@ -164,13 +146,13 @@ export function HoldingsTable({
                   className="table-row-hover"
                   style={{ borderBottom: '1px solid #f8fafc', color: '#1e293b' }}
                 >
-                  {/* Company Ticker & Name - Sticky pinned */}
-                  <td className="sticky-col" style={{ padding: '14px 16px 14px 8px', whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* Company Ticker & Name */}
+                  <td style={{ padding: '12px 8px 12px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div
                         style={{
-                          width: '30px',
-                          height: '30px',
+                          width: '28px',
+                          height: '28px',
                           borderRadius: '8px',
                           backgroundColor: h.logoBg,
                           color: '#ffffff',
@@ -184,27 +166,40 @@ export function HoldingsTable({
                       >
                         {h.logoLetter}
                       </div>
-                      <div>
-                        <strong style={{ display: 'block', fontSize: '13px', color: '#0f172a' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ display: 'block', fontSize: '13px', color: '#0f172a', lineHeight: '1.2' }}>
                           {h.ticker}
                         </strong>
-                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            color: '#64748b',
+                            display: 'block',
+                            maxWidth: '120px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            lineHeight: '1.2',
+                            marginTop: '2px',
+                          }}
+                        >
                           {h.name}
                         </span>
                       </div>
                     </div>
                   </td>
 
-                  {/* Sector */}
-                  <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                  {/* Sector Badge */}
+                  <td style={{ padding: '12px 8px', whiteSpace: 'nowrap' }}>
                     <span
                       style={{
                         backgroundColor: '#f1f5f9',
                         color: '#475569',
-                        padding: '3px 8px',
+                        padding: '3px 7px',
                         borderRadius: '6px',
                         fontSize: '11px',
                         fontWeight: 500,
+                        display: 'inline-block',
                       }}
                     >
                       {h.sector}
@@ -212,23 +207,24 @@ export function HoldingsTable({
                   </td>
 
                   {/* Share Price */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>
                     ${h.price.toFixed(2)}
                   </td>
 
                   {/* 24h Change */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '12px 0 12px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <span
                       style={{
                         backgroundColor: isPositive ? '#e6f9f0' : '#fee2e2',
                         color: isPositive ? '#10b981' : '#ef4444',
-                        padding: '3px 8px',
+                        padding: '3px 7px',
                         borderRadius: '9999px',
                         fontSize: '11px',
                         fontWeight: 600,
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '2px',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {isPositive ? (
@@ -236,14 +232,17 @@ export function HoldingsTable({
                       ) : (
                         <ArrowDownRight style={{ width: '12px', height: '12px' }} />
                       )}
-                      {isPositive ? '+' : ''}
-                      {h.change.toFixed(2)} ({isPositive ? '+' : ''}
-                      {h.changePercent.toFixed(2)}%)
+                      <span className="hidden md:inline">
+                        {isPositive ? '+' : ''}{h.change.toFixed(2)}{' '}
+                      </span>
+                      <span>
+                        ({isPositive ? '+' : ''}{h.changePercent.toFixed(2)}%)
+                      </span>
                     </span>
                   </td>
 
-                  {/* Pre/Post Market (as seen in TradingView screenshot) */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                  {/* Pre/Post Market (Desktop only - lg) */}
+                  <td className="hidden lg:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>
                     {h.prePostPrice !== undefined ? (
                       <div>
                         <span>${h.prePostPrice.toFixed(2)} </span>
@@ -257,18 +256,18 @@ export function HoldingsTable({
                     )}
                   </td>
 
-                  {/* Position Shares */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                  {/* Position Shares (Desktop only - md) */}
+                  <td className="hidden md:table-cell" style={{ padding: '12px 10px', textAlign: 'right', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {h.shares.toLocaleString()}
                   </td>
 
-                  {/* Total Value */}
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                  {/* Total Value (Desktop only - md) */}
+                  <td className="hidden md:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>
                     ${h.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
 
-                  {/* Portfolio Weight */}
-                  <td style={{ padding: '14px 8px 14px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {/* Portfolio Weight (Desktop only - lg) */}
+                  <td className="hidden lg:table-cell" style={{ padding: '12px 0 12px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                       <div
                         style={{
