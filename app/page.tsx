@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/lib/auth/context';
 import { Header } from '@/components/layout/Header';
 import { Sidebar, NavTab } from '@/components/layout/Sidebar';
@@ -13,12 +13,56 @@ import { AnalyticsView } from '@/components/dashboard/AnalyticsView';
 import { SettingsView } from '@/components/dashboard/SettingsView';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, RECENT_TRANSACTIONS, LIQUID_CASH_RESERVES } from '@/lib/data/holdings';
+import { StockHolding } from '@/types';
 
 function DashboardContent() {
   const { isAuthenticated } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [holdings, setHoldings] = useState<StockHolding[]>(INITIAL_HOLDINGS);
+  const [isLiveActive, setIsLiveActive] = useState(false);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
+
+  // Sync live stock quotes from Alpaca & Finnhub via /api/stocks/quotes
+  useEffect(() => {
+    let isMounted = true;
+
+    async function syncQuotes() {
+      try {
+        const res = await fetch('/api/stocks/quotes');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.quotes && isMounted) {
+          setHoldings((prev) =>
+            prev.map((h) => {
+              const live = data.quotes[h.ticker];
+              if (!live) return h;
+              return {
+                ...h,
+                price: live.price,
+                change: live.change,
+                changePercent: live.changePercent,
+                prePostPrice: live.prePostPrice ?? h.prePostPrice,
+                prePostChange: live.prePostChange ?? h.prePostChange,
+              };
+            })
+          );
+          setIsLiveActive(true);
+          setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        }
+      } catch (err) {
+        console.error('Failed to sync live quotes:', err);
+      }
+    }
+
+    syncQuotes();
+    const interval = setInterval(syncQuotes, 30_000); // 30-sec refresh interval
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // If not authenticated, show user login
   if (!isAuthenticated) {
@@ -51,9 +95,10 @@ function DashboardContent() {
             setCurrentTab(tab);
             setIsMobileMenuOpen(false);
           }}
-          holdingsCount={INITIAL_HOLDINGS.length}
+          holdingsCount={holdings.length}
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
+          isLiveActive={isLiveActive}
         />
 
         {/* Main Content Area - Expands full width without dead space on right */}
@@ -87,14 +132,16 @@ function DashboardContent() {
 
               {/* Bottom Table: Recent Transactions / Portfolio Shares */}
               <HoldingsTable
-                holdings={INITIAL_HOLDINGS}
+                holdings={holdings}
                 searchFilter={searchQuery}
+                isLiveActive={isLiveActive}
+                lastSynced={lastSynced}
               />
             </div>
           )}
 
           {currentTab === 'analytics' && (
-            <AnalyticsView holdings={INITIAL_HOLDINGS} />
+            <AnalyticsView holdings={holdings} />
           )}
 
           {currentTab === 'customers' && (
@@ -108,8 +155,10 @@ function DashboardContent() {
                 </p>
               </div>
               <HoldingsTable
-                holdings={INITIAL_HOLDINGS}
+                holdings={holdings}
                 searchFilter={searchQuery}
+                isLiveActive={isLiveActive}
+                lastSynced={lastSynced}
               />
             </div>
           )}

@@ -19,6 +19,7 @@ interface SidebarProps {
   holdingsCount?: number;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
+  isLiveActive?: boolean;
 }
 
 export function Sidebar({
@@ -27,6 +28,7 @@ export function Sidebar({
   holdingsCount = 17,
   isOpenMobile,
   onCloseMobile,
+  isLiveActive = false,
 }: SidebarProps) {
   const navItems = [
     {
@@ -196,7 +198,7 @@ export function Sidebar({
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <CircleDot style={{ width: '10px', height: '10px', color: '#10b981' }} />
                 <span style={{ fontSize: '11px', fontWeight: 600, color: '#334155' }}>
-                  Portfolio Synced
+                  {isLiveActive ? 'Live Market Active' : 'Portfolio Synced'}
                 </span>
               </div>
               <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', lineHeight: '1.4' }}>
@@ -276,7 +278,7 @@ export function Sidebar({
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <CircleDot style={{ width: '10px', height: '10px', color: '#10b981' }} />
           <span style={{ fontSize: '11px', fontWeight: 600, color: '#334155' }}>
-            Portfolio Synced
+            {isLiveActive ? 'Live Market Active' : 'Portfolio Synced'}
           </span>
         </div>
         <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', lineHeight: '1.4' }}>

@@ -7,11 +7,15 @@ import { ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
 interface HoldingsTableProps {
   holdings: StockHolding[];
   searchFilter: string;
+  isLiveActive?: boolean;
+  lastSynced?: string | null;
 }
 
 export function HoldingsTable({
   holdings,
   searchFilter,
+  isLiveActive,
+  lastSynced,
 }: HoldingsTableProps) {
   const [selectedSector, setSelectedSector] = useState<string>('ALL');
 
@@ -43,7 +47,7 @@ export function HoldingsTable({
       {/* Table Header */}
       <div className="holdings-header">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
               Company Shares & Market Watchlist
             </h3>
@@ -59,6 +63,32 @@ export function HoldingsTable({
             >
               {filteredHoldings.length} Companies
             </span>
+            {isLiveActive && (
+              <span
+                style={{
+                  backgroundColor: '#e6f9f0',
+                  color: '#065f46',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '9999px',
+                    backgroundColor: '#10b981',
+                    display: 'inline-block',
+                  }}
+                />
+                Live Feed Active {lastSynced ? `(${lastSynced})` : ''}
+              </span>
+            )}
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '3px', margin: 0 }}>
             Live market valuation and share distribution contributing to your $120.57M portfolio
