@@ -16,6 +16,11 @@ import {
   AlertTriangle,
   Clock,
   ShieldAlert,
+  Coins,
+  Copy,
+  Check,
+  ExternalLink,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
 import { AuthSessionInfo } from '@/types';
@@ -31,7 +36,20 @@ export function SettingsView() {
     changePassword,
   } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('security');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'crypto'>('security');
+
+  // Crypto Vault States
+  const [vaultAddresses, setVaultAddresses] = useState({
+    USDT_TRC20: 'TLyqzVGLV1srkB7dToTAEqgDSfPtXRJZYH',
+    USDT_ERC20: '0x71C8A60e0d5D9fB821c9Ac9c42E5F7a1E12a6D95',
+    BTC: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+    ETH: '0x71C8A60e0d5D9fB821c9Ac9c42E5F7a1E12a6D95',
+  });
+  const [isSavingVault, setIsSavingVault] = useState(false);
+  const [vaultSaveStatus, setVaultSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [testingAsset, setTestingAsset] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, string>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Profile Form States
   const [name, setName] = useState(user?.name || 'Declan Salo');
@@ -150,6 +168,100 @@ export function SettingsView() {
     setTimeout(() => setSessionActionStatus(null), 5000);
   };
 
+  const loadVaultConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/crypto/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.config?.addresses) {
+          setVaultAddresses(data.config.addresses);
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadVaultConfig();
+  }, [loadVaultConfig]);
+
+  const handleSaveVaultAddresses = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVaultSaveStatus(null);
+    if (!isMaster) {
+      setVaultSaveStatus({
+        type: 'error',
+        message: 'Only Declan Salo (Master Account) can update deposit vault addresses.',
+      });
+      return;
+    }
+    setIsSavingVault(true);
+    try {
+      const res = await fetch('/api/crypto/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses: vaultAddresses }),
+      });
+      const data = await res.json();
+      setIsSavingVault(false);
+      if (data.success) {
+        setVaultSaveStatus({
+          type: 'success',
+          message: 'Deposit vault addresses successfully updated and persisted across portfolio!',
+        });
+        setTimeout(() => setVaultSaveStatus(null), 4000);
+      } else {
+        setVaultSaveStatus({
+          type: 'error',
+          message: data.error || 'Failed to update vault addresses.',
+        });
+      }
+    } catch (err: any) {
+      setIsSavingVault(false);
+      setVaultSaveStatus({
+        type: 'error',
+        message: err.message || 'Network error saving vault addresses.',
+      });
+    }
+  };
+
+  const handleTestAddress = async (asset: 'USDT' | 'BTC' | 'ETH', network: string, address: string, key: string) => {
+    setTestingAsset(key);
+    try {
+      const res = await fetch('/api/crypto/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asset, network, address }),
+      });
+      const data = await res.json();
+      if (data.success && data.result) {
+        const r = data.result;
+        if (r.hasDeposit && r.transactions.length > 0) {
+          setTestResult((prev) => ({
+            ...prev,
+            [key]: `✓ On-chain activity found: ${r.transactions.length} deposit(s) totaling ${r.summary.totalReceived} ${asset}`,
+          }));
+        } else {
+          setTestResult((prev) => ({
+            ...prev,
+            [key]: `✓ Live node verified: 0 inbound txs at ${new Date(r.checkedAt).toLocaleTimeString()} (${r.source})`,
+          }));
+        }
+      } else {
+        setTestResult((prev) => ({
+          ...prev,
+          [key]: `✗ ${data.error || 'Verification failed'}`,
+        }));
+      }
+    } catch (err: any) {
+      setTestResult((prev) => ({
+        ...prev,
+        [key]: `✗ Error: ${err.message}`,
+      }));
+    } finally {
+      setTestingAsset(null);
+    }
+  };
+
   const otherSessionsCount = sessions.filter((s) => !s.isCurrent).length;
 
   return (
@@ -192,6 +304,24 @@ export function SettingsView() {
             }}
           >
             🔒 Security & Active Sessions
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('crypto')}
+            style={{
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 600,
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: activeTab === 'crypto' ? '#ffffff' : 'transparent',
+              color: activeTab === 'crypto' ? '#0f172a' : '#64748b',
+              boxShadow: activeTab === 'crypto' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            🪙 Crypto Vaults
           </button>
           <button
             type="button"
@@ -1024,6 +1154,485 @@ export function SettingsView() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* CRYPTO VAULTS TAB (Declan's Real Deposit Addresses & On-Chain Audit)     */}
+      {/* ========================================================================= */}
+      {activeTab === 'crypto' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Notification Banner */}
+          {vaultSaveStatus && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor: vaultSaveStatus.type === 'success' ? '#e6f9f0' : '#fef2f2',
+                color: vaultSaveStatus.type === 'success' ? '#065f46' : '#991b1b',
+                border: `1px solid ${vaultSaveStatus.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+                padding: '12px 16px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: 600,
+              }}
+            >
+              {vaultSaveStatus.type === 'success' ? (
+                <CheckCircle2 style={{ width: '16px', height: '16px', color: '#10b981', flexShrink: 0 }} />
+              ) : (
+                <AlertTriangle style={{ width: '16px', height: '16px', color: '#ef4444', flexShrink: 0 }} />
+              )}
+              <span>{vaultSaveStatus.message}</span>
+            </div>
+          )}
+
+          {/* Master vs Guest Notice */}
+          {!isMaster ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                padding: '16px',
+                borderRadius: '12px',
+              }}
+            >
+              <ShieldAlert style={{ width: '18px', height: '18px', color: '#64748b', flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong style={{ fontSize: '13px', color: '#0f172a' }}>Read-Only Vault Inspection (Guest View)</strong>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0', lineHeight: 1.45 }}>
+                  You are viewing Declan Salo&apos;s active multi-sig vault addresses. Only the Master Account (Declan) has permission to reconfigure target custody wallets.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                padding: '16px',
+                borderRadius: '12px',
+              }}
+            >
+              <Coins style={{ width: '18px', height: '18px', color: '#2563eb', flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong style={{ fontSize: '13px', color: '#1e40af' }}>Master Vault Configuration (Declan Salo)</strong>
+                <p style={{ fontSize: '12px', color: '#1e3a8a', margin: '4px 0 0', lineHeight: 1.45 }}>
+                  Configure your genuine receiving wallet addresses below. Any incoming crypto sent to these addresses will be detected and verified directly on the public blockchain by the live deposit scanner.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Form */}
+          <form
+            onSubmit={handleSaveVaultAddresses}
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '14px',
+              border: '1px solid #e9edf3',
+              padding: '24px',
+              boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f4f9', paddingBottom: '14px' }}>
+              <Wallet style={{ width: '18px', height: '18px', color: '#2563eb' }} />
+              <div>
+                <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: 0 }}>
+                  Inbound Custody Vault Addresses
+                </h3>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>
+                  Validated against public blockchain explorer and node RPCs
+                </p>
+              </div>
+            </div>
+
+            {/* 1. USDT Tron TRC-20 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                    Tether USD (USDT)
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#ecfdf5', color: '#059669', padding: '2px 6px', borderRadius: '4px' }}>
+                    Tron (TRC-20)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTestAddress('USDT', 'TRC20', vaultAddresses.USDT_TRC20, 'USDT_TRC20')}
+                  disabled={testingAsset === 'USDT_TRC20'}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#2563eb',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {testingAsset === 'USDT_TRC20' ? (
+                    <RefreshCw style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <RefreshCw style={{ width: '12px', height: '12px' }} />
+                  )}
+                  <span>Test Blockchain Node</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={vaultAddresses.USDT_TRC20}
+                  onChange={(e) => setVaultAddresses((prev) => ({ ...prev, USDT_TRC20: e.target.value }))}
+                  disabled={!isMaster}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12px',
+                    fontFamily: 'ui-monospace, monospace',
+                    color: '#0f172a',
+                    backgroundColor: isMaster ? '#ffffff' : '#f8fafc',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(vaultAddresses.USDT_TRC20);
+                    setCopiedKey('USDT_TRC20');
+                    setTimeout(() => setCopiedKey(null), 2000);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: copiedKey === 'USDT_TRC20' ? '#ecfdf5' : '#ffffff',
+                    color: copiedKey === 'USDT_TRC20' ? '#059669' : '#334155',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {copiedKey === 'USDT_TRC20' ? <Check style={{ width: '13px', height: '13px' }} /> : <Copy style={{ width: '13px', height: '13px' }} />}
+                  <span>{copiedKey === 'USDT_TRC20' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              {testResult['USDT_TRC20'] && (
+                <div style={{ fontSize: '11px', color: testResult['USDT_TRC20'].startsWith('✓') ? '#059669' : '#dc2626', fontWeight: 500 }}>
+                  {testResult['USDT_TRC20']}
+                </div>
+              )}
+            </div>
+
+            {/* 2. USDT Ethereum ERC-20 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                    Tether USD (USDT)
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#eef2ff', color: '#4f46e5', padding: '2px 6px', borderRadius: '4px' }}>
+                    Ethereum (ERC-20)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTestAddress('USDT', 'ERC20', vaultAddresses.USDT_ERC20, 'USDT_ERC20')}
+                  disabled={testingAsset === 'USDT_ERC20'}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#2563eb',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {testingAsset === 'USDT_ERC20' ? (
+                    <RefreshCw style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <RefreshCw style={{ width: '12px', height: '12px' }} />
+                  )}
+                  <span>Test Blockchain Node</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={vaultAddresses.USDT_ERC20}
+                  onChange={(e) => setVaultAddresses((prev) => ({ ...prev, USDT_ERC20: e.target.value }))}
+                  disabled={!isMaster}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12px',
+                    fontFamily: 'ui-monospace, monospace',
+                    color: '#0f172a',
+                    backgroundColor: isMaster ? '#ffffff' : '#f8fafc',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(vaultAddresses.USDT_ERC20);
+                    setCopiedKey('USDT_ERC20');
+                    setTimeout(() => setCopiedKey(null), 2000);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: copiedKey === 'USDT_ERC20' ? '#ecfdf5' : '#ffffff',
+                    color: copiedKey === 'USDT_ERC20' ? '#059669' : '#334155',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {copiedKey === 'USDT_ERC20' ? <Check style={{ width: '13px', height: '13px' }} /> : <Copy style={{ width: '13px', height: '13px' }} />}
+                  <span>{copiedKey === 'USDT_ERC20' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              {testResult['USDT_ERC20'] && (
+                <div style={{ fontSize: '11px', color: testResult['USDT_ERC20'].startsWith('✓') ? '#059669' : '#dc2626', fontWeight: 500 }}>
+                  {testResult['USDT_ERC20']}
+                </div>
+              )}
+            </div>
+
+            {/* 3. Bitcoin Native */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                    Bitcoin (BTC)
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#fffbeb', color: '#b45309', padding: '2px 6px', borderRadius: '4px' }}>
+                    Native SegWit
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTestAddress('BTC', 'Native', vaultAddresses.BTC, 'BTC')}
+                  disabled={testingAsset === 'BTC'}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#2563eb',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {testingAsset === 'BTC' ? (
+                    <RefreshCw style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <RefreshCw style={{ width: '12px', height: '12px' }} />
+                  )}
+                  <span>Test Blockchain Node</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={vaultAddresses.BTC}
+                  onChange={(e) => setVaultAddresses((prev) => ({ ...prev, BTC: e.target.value }))}
+                  disabled={!isMaster}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12px',
+                    fontFamily: 'ui-monospace, monospace',
+                    color: '#0f172a',
+                    backgroundColor: isMaster ? '#ffffff' : '#f8fafc',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(vaultAddresses.BTC);
+                    setCopiedKey('BTC');
+                    setTimeout(() => setCopiedKey(null), 2000);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: copiedKey === 'BTC' ? '#ecfdf5' : '#ffffff',
+                    color: copiedKey === 'BTC' ? '#059669' : '#334155',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {copiedKey === 'BTC' ? <Check style={{ width: '13px', height: '13px' }} /> : <Copy style={{ width: '13px', height: '13px' }} />}
+                  <span>{copiedKey === 'BTC' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              {testResult['BTC'] && (
+                <div style={{ fontSize: '11px', color: testResult['BTC'].startsWith('✓') ? '#059669' : '#dc2626', fontWeight: 500 }}>
+                  {testResult['BTC']}
+                </div>
+              )}
+            </div>
+
+            {/* 4. Ethereum Mainnet */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                    Ethereum (ETH)
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#eef2ff', color: '#6366f1', padding: '2px 6px', borderRadius: '4px' }}>
+                    Mainnet
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTestAddress('ETH', 'MAINNET', vaultAddresses.ETH, 'ETH')}
+                  disabled={testingAsset === 'ETH'}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#2563eb',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {testingAsset === 'ETH' ? (
+                    <RefreshCw style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <RefreshCw style={{ width: '12px', height: '12px' }} />
+                  )}
+                  <span>Test Blockchain Node</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={vaultAddresses.ETH}
+                  onChange={(e) => setVaultAddresses((prev) => ({ ...prev, ETH: e.target.value }))}
+                  disabled={!isMaster}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12px',
+                    fontFamily: 'ui-monospace, monospace',
+                    color: '#0f172a',
+                    backgroundColor: isMaster ? '#ffffff' : '#f8fafc',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(vaultAddresses.ETH);
+                    setCopiedKey('ETH');
+                    setTimeout(() => setCopiedKey(null), 2000);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: copiedKey === 'ETH' ? '#ecfdf5' : '#ffffff',
+                    color: copiedKey === 'ETH' ? '#059669' : '#334155',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {copiedKey === 'ETH' ? <Check style={{ width: '13px', height: '13px' }} /> : <Copy style={{ width: '13px', height: '13px' }} />}
+                  <span>{copiedKey === 'ETH' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              {testResult['ETH'] && (
+                <div style={{ fontSize: '11px', color: testResult['ETH'].startsWith('✓') ? '#059669' : '#dc2626', fontWeight: 500 }}>
+                  {testResult['ETH']}
+                </div>
+              )}
+            </div>
+
+            {/* Save Button for Master Account */}
+            <div style={{ paddingTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="submit"
+                disabled={isSavingVault || !isMaster}
+                style={{
+                  backgroundColor: isMaster ? '#2563eb' : '#94a3b8',
+                  color: '#ffffff',
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: isMaster ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isSavingVault ? (
+                  <>
+                    <RefreshCw style={{ width: '13px', height: '13px', animation: 'spin 1s linear infinite' }} />
+                    <span>Saving Vault Addresses...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 style={{ width: '14px', height: '14px' }} />
+                    <span>{isMaster ? 'Save & Persist Vault Addresses' : 'Restricted to Declan Salo (Master)'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
