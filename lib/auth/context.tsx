@@ -8,10 +8,16 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   sessionId: string | null;
+  isMaster: boolean;
   revocationNotice: string | null;
   clearRevocationNotice: () => void;
   login: (email: string, pass: string, deviceName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  updateProfile: (profile: {
+    name?: string;
+    email?: string;
+    location?: string;
+  }) => Promise<{ success: boolean; error?: string; user?: UserProfile }>;
   fetchSessions: () => Promise<{ success: boolean; sessions?: AuthSessionInfo[]; error?: string }>;
   revokeSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
   revokeAllOtherSessions: () => Promise<{ success: boolean; count?: number; error?: string }>;
@@ -30,6 +36,7 @@ const NOTICE_KEY = 'moback_revocation_notice';
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isMaster, setIsMaster] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [revocationNotice, setRevocationNotice] = useState<string | null>(null);
@@ -59,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.authenticated) {
           setUser(data.user);
           setSessionId(data.sessionId);
+          setIsMaster(!!data.isMaster);
           setIsAuthenticated(true);
           return true;
         }
@@ -78,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(null);
       setSessionId(null);
+      setIsMaster(false);
       setIsAuthenticated(false);
       setRevocationNotice(reason);
       return false;
@@ -187,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(data.user);
       setSessionId(data.sessionId);
+      setIsMaster(!!data.isMaster);
       setIsAuthenticated(true);
       setIsLoading(false);
       return { success: true };
@@ -212,7 +222,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
     setSessionId(null);
+    setIsMaster(false);
     setIsAuthenticated(false);
+  };
+
+  const updateProfile = async (profile: {
+    name?: string;
+    email?: string;
+    location?: string;
+  }): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profile),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Failed to update profile' };
+      }
+      if (data.user) {
+        setUser(data.user);
+      }
+      return { success: true, user: data.user };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      return { success: false, error: message };
+    }
   };
 
   const fetchSessions = async (): Promise<{
@@ -331,10 +373,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated,
         isLoading,
         sessionId,
+        isMaster,
         revocationNotice,
         clearRevocationNotice,
         login,
         logout,
+        updateProfile,
         fetchSessions,
         revokeSession,
         revokeAllOtherSessions,

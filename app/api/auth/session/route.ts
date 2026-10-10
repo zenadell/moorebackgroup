@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
       user: result.user,
       sessionId: result.session?.id,
       deviceName: result.session?.deviceName,
+      isMaster: !!result.session?.isMaster,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';

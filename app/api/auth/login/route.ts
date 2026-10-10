@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       token: session.token,
       sessionId: session.id,
       deviceName: session.deviceName,
+      isMaster: !!session.isMaster,
       user,
     });
   } catch (err: unknown) {

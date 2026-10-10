@@ -80,6 +80,8 @@ export interface AuthSessionInfo {
   isRevoked: boolean;
   revokedReason?: string;
   isCurrent: boolean;
+  isMaster: boolean;
 }
+
 
 

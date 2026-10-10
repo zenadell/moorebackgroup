@@ -17,7 +17,7 @@ export function Header({
   onNavigateSettings,
   onToggleMobileMenu,
 }: HeaderProps) {
-  const { user, logout } = useAuth();
+  const { user, isMaster, logout } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showPresentationMenu, setShowPresentationMenu] = useState(false);
   const [presentationMode, setPresentationMode] = useState<'Presented' | 'Personal' | 'Detailed'>('Presented');
@@ -376,20 +376,33 @@ export function Header({
                     <span>📍</span> {user?.location || 'Nashville Tennessee, United States'}
                   </p>
                 )}
-                <span
-                  style={{
-                    display: 'inline-block',
-                    marginTop: '6px',
-                    borderRadius: '4px',
-                    backgroundColor: '#eff6ff',
-                    color: '#1d4ed8',
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    padding: '2px 6px',
-                  }}
-                >
-                  {user?.role || 'Private Portfolio'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      borderRadius: '4px',
+                      backgroundColor: isMaster ? '#eff6ff' : '#f1f5f9',
+                      color: isMaster ? '#1d4ed8' : '#475569',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      padding: '2px 6px',
+                    }}
+                  >
+                    {isMaster ? '👑 Master Account' : 'Guest Viewer'}
+                  </span>
+                  <span
+                    style={{
+                      borderRadius: '4px',
+                      backgroundColor: '#f8fafc',
+                      color: '#64748b',
+                      fontSize: '10px',
+                      fontWeight: 500,
+                      padding: '2px 6px',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    {user?.role || 'Private Portfolio'}
+                  </span>
+                </div>
               </div>
 
               <div style={{ paddingTop: '4px' }}>

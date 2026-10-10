@@ -23,6 +23,8 @@ import { AuthSessionInfo } from '@/types';
 export function SettingsView() {
   const {
     user,
+    isMaster,
+    updateProfile,
     fetchSessions,
     revokeSession,
     revokeAllOtherSessions,
@@ -41,6 +43,8 @@ export function SettingsView() {
   const [dailyDigest, setDailyDigest] = useState(true);
   const [volatilityAlert, setVolatilityAlert] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   // Security & Password States
   const [currentPassword, setCurrentPassword] = useState('');
@@ -70,21 +74,22 @@ export function SettingsView() {
     return () => clearInterval(interval);
   }, [loadSessions]);
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const updatedUser = {
-        ...(user || {}),
-        name,
-        email,
-        location,
-      };
-      localStorage.setItem('moback_auth_user', JSON.stringify(updatedUser));
-    } catch {
-      // ignore
+    setProfileError(null);
+    if (!isMaster) {
+      setProfileError('Only Declan Salo (Master Account) can update profile and login details.');
+      return;
     }
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    setProfileSaving(true);
+    const res = await updateProfile({ name, email, location });
+    setProfileSaving(false);
+    if (res.success) {
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } else {
+      setProfileError(res.error || 'Failed to update profile');
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -235,6 +240,87 @@ export function SettingsView() {
             </div>
           )}
 
+          {/* Master vs Guest Notice Banner */}
+          {!isMaster ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                color: '#334155',
+                lineHeight: 1.5,
+              }}
+            >
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  backgroundColor: '#e2e8f0',
+                  color: '#475569',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Shield style={{ width: '18px', height: '18px' }} />
+              </div>
+              <div>
+                <strong style={{ color: '#0f172a', display: 'block', fontSize: '13px' }}>
+                  Viewer / Guest Session
+                </strong>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  You are logged into Declan Salo&apos;s portfolio in authorized viewer mode. Administrative privileges (terminating sessions, kicking out devices, and changing account passwords) are strictly managed by the account owner.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                color: '#1e3a8a',
+                lineHeight: 1.5,
+              }}
+            >
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  backgroundColor: '#dbeafe',
+                  color: '#2563eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <ShieldAlert style={{ width: '18px', height: '18px' }} />
+              </div>
+              <div>
+                <strong style={{ color: '#1e40af', display: 'block', fontSize: '13px' }}>
+                  👑 Master Account Device (Declan Salo)
+                </strong>
+                <span style={{ fontSize: '12px', color: '#3b82f6' }}>
+                  You have full administrative authority. You can monitor active guest sessions (such as your brother), kick them out immediately on demand, and update account credentials.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* ACTIVE DEVICES & SESSIONS CARD */}
           <div
             style={{
@@ -290,7 +376,9 @@ export function SettingsView() {
                     </span>
                   </div>
                   <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', margin: 0 }}>
-                    Monitor who is currently viewing your portfolio and revoke access on demand
+                    {isMaster
+                      ? 'Monitor who is currently viewing your portfolio and revoke access on demand'
+                      : 'Live view of connected devices on this account'}
                   </p>
                 </div>
               </div>
@@ -320,7 +408,7 @@ export function SettingsView() {
                   <span>Refresh</span>
                 </button>
 
-                {otherSessionsCount > 0 && (
+                {isMaster && otherSessionsCount > 0 && (
                   <button
                     type="button"
                     onClick={handleRevokeAllOthers}
@@ -346,7 +434,7 @@ export function SettingsView() {
               </div>
             </div>
 
-            {/* Explanation Note for Sharing */}
+            {/* Explanation Note */}
             <div
               style={{
                 marginTop: '14px',
@@ -359,7 +447,15 @@ export function SettingsView() {
                 lineHeight: '1.5',
               }}
             >
-              <strong style={{ color: '#0f172a' }}>💡 How guest access control works:</strong> When you share your logins with your brother or a family member, their phone or laptop will appear in this list below in real time. You can click <strong style={{ color: '#dc2626' }}>&ldquo;Kick Out&rdquo;</strong> next to their device at any moment. Their browser will be terminated and redirected to the login screen within seconds.
+              {isMaster ? (
+                <>
+                  <strong style={{ color: '#0f172a' }}>💡 How guest access control works:</strong> When you share your logins with your brother or a family member, their phone or laptop will appear in this list below in real time. You can click <strong style={{ color: '#dc2626' }}>&ldquo;Kick Out&rdquo;</strong> next to their device at any moment. Their browser will be terminated and redirected to the login screen within seconds.
+                </>
+              ) : (
+                <>
+                  <strong style={{ color: '#0f172a' }}>🔒 Read-only device view:</strong> You are viewing in guest access mode. Remote kick-out and device termination controls are exclusively held by Declan Salo&apos;s primary device.
+                </>
+              )}
             </div>
 
             {/* Sessions List */}
@@ -408,15 +504,31 @@ export function SettingsView() {
                           {sess.isCurrent ? (
                             <span
                               style={{
-                                backgroundColor: '#dbeafe',
-                                color: '#1e40af',
+                                backgroundColor: isMaster ? '#dbeafe' : '#f1f5f9',
+                                color: isMaster ? '#1e40af' : '#475569',
                                 fontSize: '10px',
                                 fontWeight: 700,
                                 padding: '2px 7px',
                                 borderRadius: '9999px',
                               }}
                             >
-                              This Device (You / Declan)
+                              {isMaster ? 'This Device (You / Declan Salo - Master)' : 'This Device (Guest Viewer)'}
+                            </span>
+                          ) : sess.isMaster ? (
+                            <span
+                              style={{
+                                backgroundColor: '#dbeafe',
+                                color: '#1e40af',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                padding: '2px 7px',
+                                borderRadius: '9999px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              👑 Master Account (Declan Salo)
                             </span>
                           ) : (
                             <span
@@ -451,13 +563,13 @@ export function SettingsView() {
                       </div>
                     </div>
 
-                    {/* Action Button */}
+                    {/* Action Column */}
                     <div>
                       {sess.isCurrent ? (
                         <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', paddingRight: '8px' }}>
                           Current Session
                         </span>
-                      ) : (
+                      ) : isMaster ? (
                         <button
                           type="button"
                           onClick={() => handleRevokeSingle(sess.id, sess.deviceName)}
@@ -479,6 +591,23 @@ export function SettingsView() {
                           <ShieldAlert style={{ width: '13px', height: '13px' }} />
                           <span>Kick Out</span>
                         </button>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            color: '#64748b',
+                            fontWeight: 500,
+                            padding: '4px 10px',
+                            backgroundColor: '#f1f5f9',
+                            borderRadius: '6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Shield style={{ width: '11px', height: '11px', color: '#94a3b8' }} />
+                          {sess.isMaster ? 'Master Device (Protected)' : 'Active'}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -504,131 +633,158 @@ export function SettingsView() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f4f9', paddingBottom: '14px' }}>
-              <KeyRound style={{ width: '18px', height: '18px', color: '#2563eb' }} />
+              <KeyRound style={{ width: '18px', height: '18px', color: isMaster ? '#2563eb' : '#64748b' }} />
               <div>
                 <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: 0 }}>
                   Change Account Password
                 </h3>
                 <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', margin: 0 }}>
-                  Update your dashboard login password whenever you want to cut off shared access
+                  {isMaster
+                    ? 'Update your dashboard login password whenever you want to cut off shared access'
+                    : 'Restricted to Primary Master Account (Declan Salo)'}
                 </p>
               </div>
             </div>
 
-            {passwordStatus && (
+            {!isMaster ? (
               <div
                 style={{
                   marginTop: '16px',
+                  padding: '20px',
                   borderRadius: '10px',
-                  backgroundColor: passwordStatus.type === 'success' ? '#e6f9f0' : '#fee2e2',
-                  border: passwordStatus.type === 'success' ? '1px solid #a7f3d0' : '1px solid #fecaca',
-                  color: passwordStatus.type === 'success' ? '#065f46' : '#991b1b',
-                  padding: '10px 14px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  textAlign: 'center',
                   fontSize: '12px',
-                  fontWeight: 600,
+                  color: '#64748b',
                 }}
               >
-                {passwordStatus.message}
+                <KeyRound style={{ width: '22px', height: '22px', color: '#94a3b8', margin: '0 auto 8px' }} />
+                <p style={{ margin: 0, fontWeight: 600, color: '#334155' }}>
+                  Password Management Restricted
+                </p>
+                <p style={{ margin: '4px 0 0', color: '#64748b' }}>
+                  Only Declan Salo can change credentials from the primary Master account device.
+                </p>
               </div>
+            ) : (
+              <>
+                {passwordStatus && (
+                  <div
+                    style={{
+                      marginTop: '16px',
+                      borderRadius: '10px',
+                      backgroundColor: passwordStatus.type === 'success' ? '#e6f9f0' : '#fee2e2',
+                      border: passwordStatus.type === 'success' ? '1px solid #a7f3d0' : '1px solid #fecaca',
+                      color: passwordStatus.type === 'success' ? '#065f46' : '#991b1b',
+                      padding: '10px 14px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {passwordStatus.message}
+                  </div>
+                )}
+
+                <form onSubmit={handleChangePassword} style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Current Password</label>
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Enter current password"
+                      required
+                      style={{
+                        width: '100%',
+                        marginTop: '4px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        fontSize: '13px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+
+                  <div className="settings-two-col">
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>New Password</label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Minimum 6 characters"
+                        required
+                        style={{
+                          width: '100%',
+                          marginTop: '4px',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '13px',
+                          color: '#0f172a',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Repeat new password"
+                        required
+                        style={{
+                          width: '100%',
+                          marginTop: '4px',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '13px',
+                          color: '#0f172a',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#475569', cursor: 'pointer', marginTop: '2px' }}>
+                    <input
+                      type="checkbox"
+                      checked={revokeOthersOnPasswordChange}
+                      onChange={(e) => setRevokeOthersOnPasswordChange(e.target.checked)}
+                      style={{ width: '15px', height: '15px', accentColor: '#2563eb' }}
+                    />
+                    <span>Automatically terminate and kick out all other devices after changing password</span>
+                  </label>
+
+                  <div style={{ paddingTop: '6px' }}>
+                    <button
+                      type="submit"
+                      disabled={isChangingPassword}
+                      style={{
+                        backgroundColor: '#2563eb',
+                        color: '#ffffff',
+                        padding: '8px 20px',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {isChangingPassword ? 'Updating...' : 'Update Password & Protect Dashboard'}
+                    </button>
+                  </div>
+                </form>
+              </>
             )}
-
-            <form onSubmit={handleChangePassword} style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Current Password</label>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Enter current password (default: Declan2026!)"
-                  required
-                  style={{
-                    width: '100%',
-                    marginTop: '4px',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    fontSize: '13px',
-                    color: '#0f172a',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-
-              <div className="settings-two-col">
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>New Password</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimum 6 characters"
-                    required
-                    style={{
-                      width: '100%',
-                      marginTop: '4px',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
-                      fontSize: '13px',
-                      color: '#0f172a',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Confirm New Password</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat new password"
-                    required
-                    style={{
-                      width: '100%',
-                      marginTop: '4px',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
-                      fontSize: '13px',
-                      color: '#0f172a',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#475569', cursor: 'pointer', marginTop: '2px' }}>
-                <input
-                  type="checkbox"
-                  checked={revokeOthersOnPasswordChange}
-                  onChange={(e) => setRevokeOthersOnPasswordChange(e.target.checked)}
-                  style={{ width: '15px', height: '15px', accentColor: '#2563eb' }}
-                />
-                <span>Automatically terminate and kick out all other devices after changing password</span>
-              </label>
-
-              <div style={{ paddingTop: '6px' }}>
-                <button
-                  type="submit"
-                  disabled={isChangingPassword}
-                  style={{
-                    backgroundColor: '#2563eb',
-                    color: '#ffffff',
-                    padding: '8px 20px',
-                    borderRadius: '8px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isChangingPassword ? 'Updating...' : 'Update Password & Protect Dashboard'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
@@ -654,6 +810,25 @@ export function SettingsView() {
             >
               <CheckCircle2 style={{ width: '16px', height: '16px', color: '#10b981' }} />
               Profile preferences saved successfully!
+            </div>
+          )}
+
+          {profileError && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor: '#fee2e2',
+                color: '#dc2626',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: 600,
+              }}
+            >
+              <AlertTriangle style={{ width: '16px', height: '16px', color: '#dc2626', flexShrink: 0 }} />
+              {profileError}
             </div>
           )}
 
@@ -762,18 +937,19 @@ export function SettingsView() {
               <div style={{ paddingTop: '8px' }}>
                 <button
                   type="submit"
+                  disabled={profileSaving || !isMaster}
                   style={{
-                    backgroundColor: '#2563eb',
+                    backgroundColor: isMaster ? '#2563eb' : '#94a3b8',
                     color: '#ffffff',
                     padding: '8px 18px',
                     borderRadius: '8px',
                     fontSize: '13px',
                     fontWeight: 600,
                     border: 'none',
-                    cursor: 'pointer',
+                    cursor: isMaster ? 'pointer' : 'not-allowed',
                   }}
                 >
-                  Update Profile
+                  {profileSaving ? 'Saving Changes...' : isMaster ? 'Update Profile & Login Email' : 'Restricted to Declan Salo (Master)'}
                 </button>
               </div>
             </form>

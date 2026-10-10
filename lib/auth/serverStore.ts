@@ -14,11 +14,13 @@ export interface AuthSession {
   lastActiveAt: number;
   isRevoked: boolean;
   revokedReason?: string;
+  isMaster: boolean;
 }
 
 export interface AuthState {
   user: UserProfile;
   passwordHash: string; // Plain/hashed comparison
+  masterSessionId?: string;
   sessions: AuthSession[];
 }
 
@@ -48,6 +50,23 @@ async function ensureDataFile(): Promise<AuthState> {
     await fs.mkdir(DATA_DIR, { recursive: true });
     const content = await fs.readFile(DATA_FILE, 'utf-8');
     const parsed = JSON.parse(content) as AuthState;
+    // Guarantee that the earliest active unrevoked session is designated as Master
+    const hasMaster = parsed.sessions.some((s) => !s.isRevoked && s.isMaster);
+    if (!hasMaster) {
+      const activeSessions = parsed.sessions.filter((s) => !s.isRevoked);
+      if (activeSessions.length > 0) {
+        const earliest = activeSessions.reduce((prev, curr) =>
+          prev.createdAt < curr.createdAt ? prev : curr
+        );
+        earliest.isMaster = true;
+        parsed.masterSessionId = earliest.id;
+        try {
+          await fs.writeFile(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+        } catch {
+          // ignore
+        }
+      }
+    }
     inMemoryState = parsed;
     return parsed;
   } catch {
@@ -105,6 +124,19 @@ export async function getUserProfile(): Promise<UserProfile> {
   return state.user;
 }
 
+export async function updateUserProfile(profile: {
+  name?: string;
+  email?: string;
+  location?: string;
+}): Promise<UserProfile> {
+  const state = await ensureDataFile();
+  if (profile.name) state.user.name = profile.name.trim();
+  if (profile.email) state.user.email = profile.email.trim();
+  if (profile.location) state.user.location = profile.location.trim();
+  await persistState(state);
+  return state.user;
+}
+
 export async function verifyCredentials(email: string, pass: string): Promise<boolean> {
   const state = await ensureDataFile();
   const inputEmail = email.trim().toLowerCase();
@@ -140,7 +172,6 @@ export async function updatePassword(
 
   let revokedCount = 0;
   if (revokeOtherSessions) {
-    const now = Date.now();
     state.sessions = state.sessions.map((sess) => {
       if (sess.id !== currentSessionId && !sess.isRevoked) {
         revokedCount++;
@@ -165,6 +196,12 @@ export async function createSession(
 ): Promise<AuthSession> {
   const state = await ensureDataFile();
   const token = crypto.randomBytes(32).toString('hex');
+
+  // The first active unrevoked session becomes the MASTER account device
+  // Subsequent logins are marked as GUEST devices without administrative kick-out rights
+  const hasActiveMaster = state.sessions.some((s) => !s.isRevoked && s.isMaster);
+  const isMaster = !hasActiveMaster;
+
   const session: AuthSession = {
     id: `sess_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
     token,
@@ -175,7 +212,12 @@ export async function createSession(
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
     isRevoked: false,
+    isMaster,
   };
+
+  if (isMaster) {
+    state.masterSessionId = session.id;
+  }
 
   state.sessions.unshift(session);
   // Keep up to 50 recent sessions
@@ -213,7 +255,6 @@ export async function validateSession(token: string): Promise<{
 
   // Update last active timestamp
   session.lastActiveAt = Date.now();
-  // Debounced write or periodic write can be done, or immediate
   inMemoryState = state;
 
   return {
@@ -241,6 +282,7 @@ export async function getActiveSessions(currentSessionToken?: string): Promise<{
     isRevoked: s.isRevoked,
     revokedReason: s.revokedReason,
     isCurrent: !!(currentSessionToken && s.token === currentSessionToken),
+    isMaster: !!s.isMaster,
   }));
 
   return {

@@ -18,6 +18,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!auth.session?.isMaster) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Access denied: Only Declan Salo (Master Account) can change the account password.',
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { currentPassword, newPassword, revokeOtherSessions } = body;
 

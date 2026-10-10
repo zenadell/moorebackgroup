@@ -10,8 +10,8 @@ interface LoginFormProps {
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const { login, isLoading, revocationNotice, clearRevocationNotice } = useAuth();
-  const [email, setEmail] = useState('declansalo@gmail.com');
-  const [password, setPassword] = useState('Declan2026!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
@@ -20,7 +20,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     setError('');
     clearRevocationNotice();
 
-    // Detect browser/device description
     let deviceName = 'Web Browser';
     if (typeof navigator !== 'undefined') {
       const ua = navigator.userAgent;
@@ -35,15 +34,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     if (res.success) {
       if (onSuccess) onSuccess();
     } else {
-      setError(res.error || 'Authentication failed. Please check your password.');
+      setError(res.error || 'Authentication failed. Please check your credentials.');
     }
-  };
-
-  const handleQuickFill = () => {
-    setEmail('declansalo@gmail.com');
-    setPassword('Declan2026!');
-    setError('');
-    clearRevocationNotice();
   };
 
   return (
@@ -164,24 +156,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           </div>
 
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Password</label>
-              <button
-                type="button"
-                onClick={handleQuickFill}
-                style={{
-                  fontSize: '11px',
-                  color: '#2563eb',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontWeight: 500,
-                }}
-              >
-                Use default password
-              </button>
-            </div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>Password</label>
             <div style={{ position: 'relative', marginTop: '6px' }}>
               <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
                 <Lock style={{ width: '16px', height: '16px' }} />
@@ -190,7 +165,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Enter password"
                 required
                 style={{
                   width: '100%',
@@ -250,7 +225,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               transition: 'background-color 0.15s ease',
             }}
           >
-            {isLoading ? 'Authenticating...' : 'Sign In as Declan Salo'}
+            {isLoading ? 'Authenticating...' : 'Sign In to Dashboard'}
             <ArrowRight style={{ width: '14px', height: '14px' }} />
           </button>
         </form>
