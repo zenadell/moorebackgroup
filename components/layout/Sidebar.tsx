@@ -8,7 +8,9 @@ import {
   BarChart3,
   Settings,
   CircleDot,
-  X
+  X,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from 'lucide-react';
 
 export type NavTab = 'overview' | 'analytics' | 'customers' | 'reports' | 'settings';
@@ -20,6 +22,8 @@ interface SidebarProps {
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
   isLiveActive?: boolean;
+  onOpenDeposit?: () => void;
+  onOpenWithdraw?: () => void;
 }
 
 export function Sidebar({
@@ -29,6 +33,8 @@ export function Sidebar({
   isOpenMobile,
   onCloseMobile,
   isLiveActive = false,
+  onOpenDeposit,
+  onOpenWithdraw,
 }: SidebarProps) {
   const navItems = [
     {
@@ -186,6 +192,63 @@ export function Sidebar({
               </div>
             </div>
 
+            {/* Mobile Actions (Deposit / Withdraw) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+              {onOpenDeposit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenDeposit();
+                    if (onCloseMobile) onCloseMobile();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    backgroundColor: '#10b981',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ArrowDownLeft style={{ width: '13px', height: '13px' }} />
+                  <span>Deposit</span>
+                </button>
+              )}
+
+              {onOpenWithdraw && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenWithdraw();
+                    if (onCloseMobile) onCloseMobile();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    backgroundColor: '#ffffff',
+                    color: '#dc2626',
+                    border: '1px solid #fecaca',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ArrowUpRight style={{ width: '13px', height: '13px' }} />
+                  <span>Withdraw</span>
+                </button>
+              )}
+            </div>
+
             {/* Mobile Drawer Footnote */}
             <div
               style={{
@@ -264,6 +327,59 @@ export function Sidebar({
             </button>
           );
         })}
+      </div>
+
+      {/* Quick Deposit & Withdraw Buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+        {onOpenDeposit && (
+          <button
+            type="button"
+            onClick={onOpenDeposit}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <ArrowDownLeft style={{ width: '14px', height: '14px' }} />
+            <span>Deposit (Crypto)</span>
+          </button>
+        )}
+
+        {onOpenWithdraw && (
+          <button
+            type="button"
+            onClick={onOpenWithdraw}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: '7px 12px',
+              borderRadius: '8px',
+              backgroundColor: '#ffffff',
+              color: '#dc2626',
+              border: '1px solid #fecaca',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <ArrowUpRight style={{ width: '14px', height: '14px' }} />
+            <span>Withdraw</span>
+          </button>
+        )}
       </div>
 
       {/* Account Info Footnote */}

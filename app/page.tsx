@@ -12,8 +12,11 @@ import { HoldingsTable } from '@/components/dashboard/HoldingsTable';
 import { AnalyticsView } from '@/components/dashboard/AnalyticsView';
 import { SettingsView } from '@/components/dashboard/SettingsView';
 import { LoginForm } from '@/components/auth/LoginForm';
+import { DepositModal } from '@/components/dashboard/DepositModal';
+import { WithdrawModal } from '@/components/dashboard/WithdrawModal';
 import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, RECENT_TRANSACTIONS, LIQUID_CASH_RESERVES } from '@/lib/data/holdings';
 import { StockHolding } from '@/types';
+import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
 function DashboardContent() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -23,6 +26,8 @@ function DashboardContent() {
   const [holdings, setHoldings] = useState<StockHolding[]>(INITIAL_HOLDINGS);
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
 
   // Sync live stock quotes from Alpaca & Finnhub via /api/stocks/quotes
   useEffect(() => {
@@ -102,6 +107,8 @@ function DashboardContent() {
         onSearchChange={setSearchQuery}
         onNavigateSettings={() => setCurrentTab('settings')}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        onOpenDeposit={() => setIsDepositModalOpen(true)}
+        onOpenWithdraw={() => setIsWithdrawModalOpen(true)}
       />
 
       <div style={{ display: 'flex', flex: 1, minHeight: 'calc(100vh - 60px)', width: '100%' }}>
@@ -116,25 +123,89 @@ function DashboardContent() {
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
           isLiveActive={isLiveActive}
+          onOpenDeposit={() => setIsDepositModalOpen(true)}
+          onOpenWithdraw={() => setIsWithdrawModalOpen(true)}
         />
 
         {/* Main Content Area - Expands full width without dead space on right */}
         <main className="dashboard-main">
           {currentTab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Header Title (Matches "Overview" in Image 1) */}
-              <div>
-                <h1
-                  style={{
-                    fontSize: '22px',
-                    fontWeight: 700,
-                    color: '#0f172a',
-                    letterSpacing: '-0.02em',
-                    margin: 0,
-                  }}
-                >
-                  Overview
-                </h1>
+              {/* Header Title & Actions Row */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <h1
+                    style={{
+                      fontSize: '22px',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                      letterSpacing: '-0.02em',
+                      margin: 0,
+                    }}
+                  >
+                    Overview
+                  </h1>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>
+                    Declan Salo Private Portfolio • Total Balance $120.57M
+                  </p>
+                </div>
+
+                {/* Quick Action Buttons: Deposit & Withdraw */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsDepositModalOpen(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      backgroundColor: '#10b981',
+                      color: '#ffffff',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(16, 185, 129, 0.25)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <ArrowDownLeft style={{ width: '15px', height: '15px' }} />
+                    <span>Deposit (Crypto)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsWithdrawModalOpen(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      backgroundColor: '#ffffff',
+                      color: '#dc2626',
+                      border: '1px solid #fecaca',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <ArrowUpRight style={{ width: '15px', height: '15px' }} />
+                    <span>Withdraw</span>
+                  </button>
+                </div>
               </div>
 
               {/* 4 Stat Cards Row */}
@@ -261,6 +332,18 @@ function DashboardContent() {
           )}
         </main>
       </div>
+
+      {/* Crypto Deposit Modal */}
+      <DepositModal
+        isOpen={isDepositModalOpen}
+        onClose={() => setIsDepositModalOpen(false)}
+      />
+
+      {/* Institutional Withdrawal Modal */}
+      <WithdrawModal
+        isOpen={isWithdrawModalOpen}
+        onClose={() => setIsWithdrawModalOpen(false)}
+      />
     </div>
   );
 }

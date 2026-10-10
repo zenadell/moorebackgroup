@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu } from 'lucide-react';
+import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
 
 interface HeaderProps {
@@ -9,6 +9,8 @@ interface HeaderProps {
   onSearchChange: (q: string) => void;
   onNavigateSettings?: () => void;
   onToggleMobileMenu?: () => void;
+  onOpenDeposit?: () => void;
+  onOpenWithdraw?: () => void;
 }
 
 export function Header({
@@ -16,6 +18,8 @@ export function Header({
   onSearchChange,
   onNavigateSettings,
   onToggleMobileMenu,
+  onOpenDeposit,
+  onOpenWithdraw,
 }: HeaderProps) {
   const { user, isMaster, logout } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -179,7 +183,58 @@ export function Header({
       </div>
 
       {/* Right Actions & Profile */}
-      <div className="flex items-center gap-3.5" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      <div className="flex items-center gap-3.5" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Quick Deposit & Withdraw Buttons */}
+        <div className="hidden md:flex items-center" style={{ gap: '8px' }}>
+          {onOpenDeposit && (
+            <button
+              type="button"
+              onClick={onOpenDeposit}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                backgroundColor: '#10b981',
+                color: '#ffffff',
+                border: 'none',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <ArrowDownLeft style={{ width: '13px', height: '13px' }} />
+              <span>Deposit</span>
+            </button>
+          )}
+
+          {onOpenWithdraw && (
+            <button
+              type="button"
+              onClick={onOpenWithdraw}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                backgroundColor: '#ffffff',
+                color: '#dc2626',
+                border: '1px solid #fecaca',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <ArrowUpRight style={{ width: '13px', height: '13px' }} />
+              <span>Withdraw</span>
+            </button>
+          )}
+        </div>
+
         {/* Presentation Mode Pill (Matches "Presented ▾" in Image 1) */}
         <div className="relative hidden sm:block" style={{ position: 'relative' }}>
           <button
