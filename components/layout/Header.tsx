@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu, ArrowDownLeft, ArrowUpRight, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
 
 interface HeaderProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onNavigateSettings?: () => void;
+  onNavigateAdmin?: () => void;
   onToggleMobileMenu?: () => void;
   onOpenDeposit?: () => void;
   onOpenWithdraw?: () => void;
@@ -17,6 +18,7 @@ export function Header({
   searchQuery,
   onSearchChange,
   onNavigateSettings,
+  onNavigateAdmin,
   onToggleMobileMenu,
   onOpenDeposit,
   onOpenWithdraw,
@@ -461,6 +463,32 @@ export function Header({
               </div>
 
               <div style={{ paddingTop: '4px' }}>
+                {onNavigateAdmin && isMaster && (
+                  <button
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      onNavigateAdmin();
+                    }}
+                    style={{
+                      display: 'flex',
+                      width: '100%',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 12px',
+                      fontSize: '12px',
+                      color: '#1e40af',
+                      fontWeight: 600,
+                      border: 'none',
+                      backgroundColor: '#eff6ff',
+                      cursor: 'pointer',
+                      borderRadius: '8px',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    <ShieldAlert style={{ width: '14px', height: '14px', color: '#2563eb' }} />
+                    Master Admin Control
+                  </button>
+                )}
                 {onNavigateSettings && (
                   <button
                     onClick={() => {

