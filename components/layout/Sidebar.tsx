@@ -12,9 +12,11 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   ShieldAlert,
+  Coins,
+  UserCheck,
 } from 'lucide-react';
 
-export type NavTab = 'overview' | 'analytics' | 'customers' | 'reports' | 'settings' | 'admin';
+export type NavTab = 'overview' | 'analytics' | 'customers' | 'reports' | 'beneficiary' | 'settings';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -37,37 +39,44 @@ export function Sidebar({
   onOpenDeposit,
   onOpenWithdraw,
 }: SidebarProps) {
-  const navItems = [
+  interface NavItem {
+    id: NavTab;
+    label: string;
+    icon: React.ComponentType<{ style?: React.CSSProperties }>;
+    badge?: string;
+  }
+
+  const navItems: NavItem[] = [
     {
-      id: 'overview' as NavTab,
+      id: 'overview',
       label: 'Overview',
       icon: LayoutDashboard,
     },
     {
-      id: 'analytics' as NavTab,
+      id: 'analytics',
       label: 'Analytics',
       icon: TrendingUp,
     },
     {
-      id: 'customers' as NavTab,
-      label: 'Customers',
-      icon: Building2,
+      id: 'customers',
+      label: 'Liquidated Shares',
+      icon: Coins,
     },
     {
-      id: 'reports' as NavTab,
+      id: 'reports',
       label: 'Reports',
       icon: BarChart3,
     },
     {
-      id: 'settings' as NavTab,
-      label: 'Settings',
-      icon: Settings,
+      id: 'beneficiary',
+      label: 'Beneficiary',
+      icon: UserCheck,
+      badge: '100%',
     },
     {
-      id: 'admin' as NavTab,
-      label: 'Admin Control',
-      icon: ShieldAlert,
-      badge: 'Master',
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings,
     },
   ];
 
@@ -135,7 +144,7 @@ export function Sidebar({
                     </svg>
                   </div>
                   <span style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-                    Orion Menu
+                    MooreBach Group
                   </span>
                 </div>
                 <button
@@ -374,7 +383,7 @@ export function Sidebar({
             }}
           >
             <ArrowDownLeft style={{ width: '14px', height: '14px' }} />
-            <span>Deposit (Crypto)</span>
+            <span>Deposit</span>
           </button>
         )}
 

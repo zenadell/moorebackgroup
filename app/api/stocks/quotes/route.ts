@@ -13,17 +13,57 @@ interface StockQuoteResult {
   updatedAt: string;
 }
 
+type MarketStatus = 'open' | 'closed' | 'pre-market' | 'after-hours' | 'weekend';
+
+function getMarketStatus(): { status: MarketStatus; label: string; lastTradeDate: string } {
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = et.getDay(); // 0=Sun, 6=Sat
+  const hours = et.getHours();
+  const minutes = et.getMinutes();
+  const timeInMinutes = hours * 60 + minutes;
+
+  // Find most recent trading day (weekday)
+  const lastTradeDay = new Date(et);
+  if (day === 0) lastTradeDay.setDate(lastTradeDay.getDate() - 2); // Sunday → Friday
+  else if (day === 6) lastTradeDay.setDate(lastTradeDay.getDate() - 1); // Saturday → Friday
+  else if (timeInMinutes < 9 * 60 + 30) lastTradeDay.setDate(lastTradeDay.getDate() - (day === 1 ? 3 : 1)); // Pre-market Mon → Fri, else prev day
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const lastTradeDate = `${days[lastTradeDay.getDay()]}, ${months[lastTradeDay.getMonth()]} ${lastTradeDay.getDate()}`;
+
+  if (day === 0 || day === 6) {
+    return { status: 'weekend', label: 'Markets Closed (Weekend)', lastTradeDate };
+  }
+  if (timeInMinutes < 4 * 60) { // Before 4:00 AM ET
+    return { status: 'pre-market', label: 'Pre-Market', lastTradeDate };
+  }
+  if (timeInMinutes < 9 * 60 + 30) { // 4:00 AM - 9:30 AM ET
+    return { status: 'pre-market', label: 'Pre-Market Session', lastTradeDate };
+  }
+  if (timeInMinutes < 16 * 60) { // 9:30 AM - 4:00 PM ET
+    return { status: 'open', label: 'Market Open', lastTradeDate };
+  }
+  if (timeInMinutes < 20 * 60) { // 4:00 PM - 8:00 PM ET
+    return { status: 'after-hours', label: 'After-Hours Trading', lastTradeDate };
+  }
+  return { status: 'closed', label: 'Markets Closed', lastTradeDate };
+}
+
 // In-memory cache to stay well within rate limits and ensure sub-second response
-let cache: { data: Record<string, StockQuoteResult>; timestamp: number } | null = null;
+let cache: { data: Record<string, StockQuoteResult>; timestamp: number; marketStatus: ReturnType<typeof getMarketStatus> } | null = null;
 const CACHE_TTL_MS = 20_000; // 20 seconds cache
 
 export async function GET() {
   const now = Date.now();
+  const marketStatus = getMarketStatus();
+
   if (cache && now - cache.timestamp < CACHE_TTL_MS) {
     return NextResponse.json({
       success: true,
       cached: true,
       quotes: cache.data,
+      marketStatus,
       timestamp: new Date(cache.timestamp).toISOString(),
     });
   }
@@ -151,13 +191,14 @@ export async function GET() {
 
   // Cache result
   if (Object.keys(quotes).length > 0) {
-    cache = { data: quotes, timestamp: now };
+    cache = { data: quotes, timestamp: now, marketStatus };
   }
 
   return NextResponse.json({
     success: true,
     cached: false,
     quotes,
+    marketStatus,
     totalCount: Object.keys(quotes).length,
     timestamp: new Date().toISOString(),
   });

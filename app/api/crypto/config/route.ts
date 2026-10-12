@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
     // Check authentication and authorization
     const token =
       req.cookies.get('moback_session_token')?.value ||
-      req.headers.get('x-session-token');
+      req.headers.get('x-session-token') ||
+      req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
 
     if (!token) {
       return NextResponse.json(

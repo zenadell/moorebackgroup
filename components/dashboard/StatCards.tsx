@@ -45,29 +45,14 @@ export function StatCards({ summary }: StatCardsProps) {
         </div>
       </div>
 
-      {/* Card 2: Active Users (Matches Image 1: 3,248 / +3.8%) */}
+      {/* Card 2: Liquidated Shares (Zero liquidated shares) */}
       <div className="kpi-card">
         <p style={{ fontSize: '13px', fontWeight: 500, color: '#64748b', margin: 0 }}>
-          Active Users
+          Liquidated Shares
         </p>
         <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span className="kpi-value" style={{ fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
-            3,248
-          </span>
-          <span
-            style={{
-              backgroundColor: '#e6f9f0',
-              color: '#10b981',
-              padding: '2px 7px',
-              borderRadius: '9999px',
-              fontSize: '11px',
-              fontWeight: 600,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '2px',
-            }}
-          >
-            +3.8%
+          <span className="kpi-value" style={{ fontWeight: 700, color: '#94a3b8', letterSpacing: '-0.02em' }}>
+            $0.00
           </span>
         </div>
       </div>

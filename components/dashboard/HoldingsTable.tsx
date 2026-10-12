@@ -3,12 +3,14 @@
 import React, { useState } from 'react';
 import { StockHolding } from '@/types';
 import { ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
+import { LiquidateModal } from './LiquidateModal';
 
 interface HoldingsTableProps {
   holdings: StockHolding[];
   searchFilter: string;
   isLiveActive?: boolean;
   lastSynced?: string | null;
+  marketStatus?: { status: string; label: string; lastTradeDate: string } | null;
 }
 
 export function HoldingsTable({
@@ -16,8 +18,10 @@ export function HoldingsTable({
   searchFilter,
   isLiveActive,
   lastSynced,
+  marketStatus,
 }: HoldingsTableProps) {
   const [selectedSector, setSelectedSector] = useState<string>('ALL');
+  const [selectedHolding, setSelectedHolding] = useState<StockHolding | null>(null);
 
   // Filter holdings by search query and sector
   const filteredHoldings = holdings.filter((h) => {
@@ -56,30 +60,52 @@ export function HoldingsTable({
               {filteredHoldings.length} Companies
             </span>
             {isLiveActive && (
-              <span
-                style={{
-                  backgroundColor: '#e6f9f0',
-                  color: '#065f46',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  padding: '2px 8px',
-                  borderRadius: '9999px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
+              <>
+                {/* Market status badge */}
                 <span
                   style={{
-                    width: '6px',
-                    height: '6px',
+                    backgroundColor: marketStatus?.status === 'open' ? '#e6f9f0' :
+                                     marketStatus?.status === 'pre-market' || marketStatus?.status === 'after-hours' ? '#fef3c7' :
+                                     '#f1f5f9',
+                    color: marketStatus?.status === 'open' ? '#065f46' :
+                           marketStatus?.status === 'pre-market' || marketStatus?.status === 'after-hours' ? '#92400e' :
+                           '#475569',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '2px 8px',
                     borderRadius: '9999px',
-                    backgroundColor: '#10b981',
-                    display: 'inline-block',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
                   }}
-                />
-                Live Feed Active {lastSynced ? `(${lastSynced})` : ''}
-              </span>
+                >
+                  <span
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '9999px',
+                      backgroundColor: marketStatus?.status === 'open' ? '#10b981' :
+                                       marketStatus?.status === 'pre-market' || marketStatus?.status === 'after-hours' ? '#f59e0b' :
+                                       '#94a3b8',
+                      display: 'inline-block',
+                      animation: marketStatus?.status === 'open' ? 'pulse 2s infinite' : 'none',
+                    }}
+                  />
+                  {marketStatus?.label || 'Connected'}
+                </span>
+                {/* Last synced timestamp */}
+                {lastSynced && (
+                  <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 500 }}>
+                    Synced {lastSynced}
+                  </span>
+                )}
+                {/* Show last trade date when market is closed */}
+                {marketStatus && marketStatus.status !== 'open' && (
+                  <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 500 }}>
+                    • Last trade: {marketStatus.lastTradeDate}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '3px', margin: 0 }}>
@@ -134,7 +160,8 @@ export function HoldingsTable({
               <th className="hidden lg:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Pre / Post Mkt</th>
               <th className="hidden md:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Shares Held</th>
               <th className="hidden md:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Total Value</th>
-              <th className="hidden lg:table-cell" style={{ padding: '12px 0 12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Portfolio Weight</th>
+              <th className="hidden lg:table-cell" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Portfolio Weight</th>
+              <th style={{ padding: '12px 0 12px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -144,7 +171,8 @@ export function HoldingsTable({
                 <tr
                   key={h.id}
                   className="table-row-hover"
-                  style={{ borderBottom: '1px solid #f8fafc', color: '#1e293b' }}
+                  onClick={() => setSelectedHolding(h)}
+                  style={{ borderBottom: '1px solid #f8fafc', color: '#1e293b', cursor: 'pointer' }}
                 >
                   {/* Company Ticker & Name */}
                   <td style={{ padding: '12px 8px 12px 0' }}>
@@ -292,6 +320,33 @@ export function HoldingsTable({
                       </span>
                     </div>
                   </td>
+
+                  {/* Action: Liquidate */}
+                  <td style={{ padding: '12px 0 12px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedHolding(h);
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #fee2e2',
+                        color: '#dc2626',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Liquidate
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -324,6 +379,13 @@ export function HoldingsTable({
           </div>
         )}
       </div>
+
+      {/* Share Liquidation Modal with Contract Lockout Pop-up */}
+      <LiquidateModal
+        holding={selectedHolding}
+        isOpen={!!selectedHolding}
+        onClose={() => setSelectedHolding(null)}
+      />
     </div>
   );
 }

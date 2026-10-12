@@ -266,3 +266,138 @@ body {
   }
 }
 
+/* ==========================================================
+   Modern Dynamic Loaders & Progress Indicator
+   ========================================================== */
+
+@keyframes topLoaderSlide {
+  0% {
+    left: -40%;
+    width: 30%;
+  }
+  50% {
+    left: 25%;
+    width: 60%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}
+
+.modern-top-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(37, 99, 235, 0.12);
+  z-index: 99999;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.modern-top-loader-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #2563eb 0%, #38bdf8 50%, #60a5fa 100%);
+  box-shadow: 0 0 12px #38bdf8, 0 0 4px #2563eb;
+  border-radius: 9999px;
+  animation: topLoaderSlide 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes modernSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.modern-spinner {
+  display: inline-block;
+  animation: modernSpin 0.75s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.05);
+    box-shadow: 0 0 0 6px rgba(37, 99, 235, 0);
+  }
+}
+
+.modern-pulse-orb {
+  animation: pulseGlow 1.8s infinite;
+}
+
+@keyframes modernSpinReverse {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* Modern Orbital Dual-Ring Spinner */
+.modern-orbital-spinner {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modern-orbital-spinner.sm {
+  width: 28px;
+  height: 28px;
+}
+
+.modern-orbital-spinner.lg {
+  width: 56px;
+  height: 56px;
+}
+
+.orbital-ring-outer {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  border-top-color: #2563eb;
+  border-right-color: #38bdf8;
+  animation: modernSpin 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.orbital-ring-inner {
+  position: absolute;
+  inset: 5px;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  border-bottom-color: #60a5fa;
+  border-left-color: #2563eb;
+  animation: modernSpinReverse 0.75s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.orbital-core {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #38bdf8 0%, #2563eb 100%);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
+  animation: pulseGlow 1.4s ease-in-out infinite;
+}
+

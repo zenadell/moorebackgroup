@@ -11,13 +11,14 @@ import { TrafficSourcesChart } from '@/components/dashboard/TrafficSourcesChart'
 import { HoldingsTable } from '@/components/dashboard/HoldingsTable';
 import { AnalyticsView } from '@/components/dashboard/AnalyticsView';
 import { SettingsView } from '@/components/dashboard/SettingsView';
-import { AdminView } from '@/components/dashboard/AdminView';
+import { BeneficiaryView } from '@/components/dashboard/BeneficiaryView';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { DepositModal } from '@/components/dashboard/DepositModal';
 import { WithdrawModal } from '@/components/dashboard/WithdrawModal';
-import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, RECENT_TRANSACTIONS, LIQUID_CASH_RESERVES } from '@/lib/data/holdings';
+import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, RECENT_TRANSACTIONS } from '@/lib/data/holdings';
 import { StockHolding } from '@/types';
-import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Coins } from 'lucide-react';
+import { ModernTopBar, OrbitalLoader } from '@/components/ui/ModernLoader';
 
 function DashboardContent() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -27,6 +28,7 @@ function DashboardContent() {
   const [holdings, setHoldings] = useState<StockHolding[]>(INITIAL_HOLDINGS);
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [marketStatus, setMarketStatus] = useState<{ status: string; label: string; lastTradeDate: string } | null>(null);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
 
@@ -40,8 +42,8 @@ function DashboardContent() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.success && data.quotes && Object.keys(data.quotes).length > 0 && isMounted) {
-          setHoldings((prev) =>
-            prev.map((h) => {
+          setHoldings((prev) => {
+            const updated = prev.map((h) => {
               const live = data.quotes[h.ticker];
               if (!live) return h;
               const livePrice = Number(live.price);
@@ -58,10 +60,24 @@ function DashboardContent() {
                 shares: shares,
                 totalValue: recalculatedValue,
               };
-            })
-          );
+            });
+
+            // Maintain exact 100% allocation into equities with zero liquid cash remainder
+            const currentTotal = updated.reduce((sum, h) => sum + h.totalValue, 0);
+            const delta = Number((120570000 - currentTotal).toFixed(2));
+            if (delta !== 0 && updated.length > 0) {
+              updated[0] = {
+                ...updated[0],
+                totalValue: Number((updated[0].totalValue + delta).toFixed(2)),
+              };
+            }
+            return updated;
+          });
           setIsLiveActive(true);
           setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          if (data.marketStatus) {
+            setMarketStatus(data.marketStatus);
+          }
         }
       } catch (err) {
         console.error('Failed to sync live quotes:', err);
@@ -78,11 +94,14 @@ function DashboardContent() {
 
   if (isLoading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f4f9' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '9999px', border: '3px solid #2563eb', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-          <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>Securing session...</span>
-        </div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a' }}>
+        <ModernTopBar active />
+        <OrbitalLoader
+          size="lg"
+          dark
+          label="Synchronizing MoBack Vaults"
+          sublabel="Verifying cryptographic clearance & session integrity..."
+        />
       </div>
     );
   }
@@ -107,7 +126,6 @@ function DashboardContent() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onNavigateSettings={() => setCurrentTab('settings')}
-        onNavigateAdmin={() => setCurrentTab('admin')}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         onOpenDeposit={() => setIsDepositModalOpen(true)}
         onOpenWithdraw={() => setIsWithdrawModalOpen(true)}
@@ -182,7 +200,7 @@ function DashboardContent() {
                     }}
                   >
                     <ArrowDownLeft style={{ width: '15px', height: '15px' }} />
-                    <span>Deposit (Crypto)</span>
+                    <span>Deposit</span>
                   </button>
 
                   <button
@@ -226,6 +244,7 @@ function DashboardContent() {
                 searchFilter={searchQuery}
                 isLiveActive={isLiveActive}
                 lastSynced={lastSynced}
+                marketStatus={marketStatus}
               />
             </div>
           )}
@@ -238,18 +257,53 @@ function DashboardContent() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
-                  Portfolio Holdings & Customers
+                  Liquidated Shares
                 </h2>
                 <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
-                  Complete list of the 17 allocated equities and cash reserves
+                  Positions converted to liquid USDT settlements
                 </p>
               </div>
-              <HoldingsTable
-                holdings={holdings}
-                searchFilter={searchQuery}
-                isLiveActive={isLiveActive}
-                lastSynced={lastSynced}
-              />
+
+              {/* Empty state - nothing on it */}
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '14px',
+                  border: '1px solid #e9edf3',
+                  padding: '70px 20px',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '12px',
+                  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
+                }}
+              >
+                <div
+                  style={{
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: '14px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#94a3b8',
+                  }}
+                >
+                  <Coins style={{ width: '26px', height: '26px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>
+                    No Liquidated Shares
+                  </h3>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: 0, maxWidth: '420px', lineHeight: 1.5 }}>
+                    There are currently no liquidated positions in this portfolio. All capital is 100% active and locked across the 17 institutional equity holdings until contract expiration.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -297,14 +351,14 @@ function DashboardContent() {
                       </strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Cash Reserves:</span>
-                      <strong style={{ color: '#0f172a' }}>
-                        ${Math.max(0, 120570000 - holdings.reduce((sum, h) => sum + h.totalValue, 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </strong>
+                      <span style={{ color: '#64748b' }}>Liquid Cash Reserves:</span>
+                      <strong style={{ color: '#0f172a' }}>$0.00</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f1f4f9', paddingTop: '8px', marginTop: '4px' }}>
                       <span style={{ fontWeight: 600, color: '#0f172a' }}>Total Portfolio Balance:</span>
-                      <strong style={{ color: '#2563eb' }}>$120,570,000.00</strong>
+                      <strong style={{ color: '#2563eb' }}>
+                        ${holdings.reduce((sum, h) => sum + h.totalValue, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </strong>
                     </div>
                   </div>
                 </div>
@@ -329,12 +383,12 @@ function DashboardContent() {
             </div>
           )}
 
-          {currentTab === 'settings' && (
-            <SettingsView />
+          {currentTab === 'beneficiary' && (
+            <BeneficiaryView totalBalance={120570000} />
           )}
 
-          {currentTab === 'admin' && (
-            <AdminView />
+          {currentTab === 'settings' && (
+            <SettingsView />
           )}
         </main>
       </div>

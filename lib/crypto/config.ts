@@ -1,6 +1,8 @@
+import db from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
 import { validateCryptoAddress } from './blockchain';
+import { queueGistPush } from '@/lib/db/gistClient';
 
 export interface CryptoVaultAddresses {
   USDT_TRC20: string;
@@ -24,37 +26,49 @@ const DEFAULT_ADDRESSES: CryptoVaultAddresses = {
   ETH: '0x71C8A60e0d5D9fB821c9Ac9c42E5F7a1E12a6D95',
 };
 
-let cachedConfig: CryptoConfigFile | null = null;
-
 export async function getCryptoConfig(): Promise<CryptoConfigFile> {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
-
   try {
-    const raw = await fs.readFile(CONFIG_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as CryptoConfigFile;
-    cachedConfig = {
-      addresses: {
-        ...DEFAULT_ADDRESSES,
-        ...(parsed.addresses || {}),
-      },
-      lastUpdated: parsed.lastUpdated || Date.now(),
-      updatedBy: parsed.updatedBy || 'usr_declan_salo',
-    };
-    return cachedConfig;
-  } catch {
-    cachedConfig = {
-      addresses: DEFAULT_ADDRESSES,
-      lastUpdated: Date.now(),
-      updatedBy: 'usr_declan_salo',
-    };
-    try {
-      await fs.writeFile(CONFIG_FILE, JSON.stringify(cachedConfig, null, 2), 'utf-8');
-    } catch {
-      // Ignore write failure if directory not ready
+    const rows = db.prepare('SELECT asset, address, updated_at, updated_by FROM vault_addresses').all() as Array<{
+      asset: string;
+      address: string;
+      updated_at: number;
+      updated_by: string;
+    }>;
+
+    const addresses: CryptoVaultAddresses = { ...DEFAULT_ADDRESSES };
+    let latestTime = Date.now();
+    let updatedBy = 'usr_declan_salo';
+
+    for (const row of rows) {
+      if (row.asset in addresses) {
+        (addresses as any)[row.asset] = row.address;
+      }
+      if (row.updated_at > latestTime) latestTime = row.updated_at;
+      if (row.updated_by) updatedBy = row.updated_by;
     }
-    return cachedConfig;
+
+    return {
+      addresses,
+      lastUpdated: latestTime,
+      updatedBy,
+    };
+  } catch {
+    // Fallback to file if SQLite read fails
+    try {
+      const raw = await fs.readFile(CONFIG_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return {
+        addresses: { ...DEFAULT_ADDRESSES, ...(parsed.addresses || {}) },
+        lastUpdated: parsed.lastUpdated || Date.now(),
+        updatedBy: parsed.updatedBy || 'usr_declan_salo',
+      };
+    } catch {
+      return {
+        addresses: DEFAULT_ADDRESSES,
+        lastUpdated: Date.now(),
+        updatedBy: 'usr_declan_salo',
+      };
+    }
   }
 }
 
@@ -62,8 +76,6 @@ export async function updateCryptoConfig(
   newAddresses: Partial<CryptoVaultAddresses>,
   updatedBy: string
 ): Promise<{ success: boolean; config?: CryptoConfigFile; error?: string }> {
-  const current = await getCryptoConfig();
-
   // Validate addresses
   if (newAddresses.USDT_TRC20) {
     const v = validateCryptoAddress('USDT', 'TRC20', newAddresses.USDT_TRC20);
@@ -82,21 +94,39 @@ export async function updateCryptoConfig(
     if (!v.valid) return { success: false, error: v.error };
   }
 
-  const updated: CryptoConfigFile = {
-    addresses: {
-      ...current.addresses,
-      ...newAddresses,
-    },
-    lastUpdated: Date.now(),
-    updatedBy,
-  };
+  const now = Date.now();
 
   try {
-    await fs.mkdir(path.dirname(CONFIG_FILE), { recursive: true });
-    await fs.writeFile(CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf-8');
-    cachedConfig = updated;
-    return { success: true, config: updated };
+    const upsertStmt = db.prepare(`
+      INSERT INTO vault_addresses (asset, address, updated_at, updated_by)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(asset) DO UPDATE SET
+        address = excluded.address,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+    `);
+
+    const updateMany = db.transaction((entries: [string, string][]) => {
+      for (const [asset, address] of entries) {
+        upsertStmt.run(asset, address, now, updatedBy);
+      }
+    });
+
+    const entries = Object.entries(newAddresses).filter(([_, addr]) => Boolean(addr)) as [string, string][];
+    updateMany(entries);
+
+    // Sync to GitHub Gist if configured
+    queueGistPush();
+
+    const updatedConfig = await getCryptoConfig();
+
+    // Also persist JSON backup
+    try {
+      await fs.writeFile(CONFIG_FILE, JSON.stringify(updatedConfig, null, 2), 'utf-8');
+    } catch {}
+
+    return { success: true, config: updatedConfig };
   } catch (err: any) {
-    return { success: false, error: `Failed to persist config: ${err.message}` };
+    return { success: false, error: `Database error updating vault addresses: ${err.message}` };
   }
 }

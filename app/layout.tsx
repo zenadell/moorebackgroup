@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MoBack Dashboard | Portfolio & Live Market Intelligence",
-  description: "Executive investment portfolio and live market intelligence dashboard",
+  title: "MooreBach Group | Portfolio & Live Market Intelligence",
+  description: "Executive investment portfolio and live market intelligence dashboard - https://moorebachgroup.com/dashboard",
 };
 
 export default function RootLayout({

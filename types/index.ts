@@ -83,5 +83,16 @@ export interface AuthSessionInfo {
   isMaster: boolean;
 }
 
-
-
+export interface BeneficiaryInfo {
+  name: string;
+  relationship: string;
+  email: string;
+  address: string;
+  allocationPercent: number;
+  covenantId: string;
+  designationDate: string;
+  status: 'Active & Legally Verified' | 'Pending Verification' | 'Active';
+  avatarUrl: string;
+  notes: string;
+  lastUpdated?: number;
+}

@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWithdrawalRequests, updateWithdrawalStatus } from '@/lib/admin/service';
-import { validateSession } from '@/lib/auth/serverStore';
+import { validateSession, verifyMasterPassword } from '@/lib/auth/serverStore';
 
 export async function GET(req: NextRequest) {
   try {
     const token =
       req.cookies.get('moback_session_token')?.value ||
-      req.headers.get('x-session-token');
+      req.cookies.get('salo_master_token')?.value ||
+      req.headers.get('x-session-token') ||
+      req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
 
-    if (!token) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const saloKey = req.headers.get('x-salo-key');
 
-    const sessionRes = await validateSession(token);
-    if (!sessionRes.valid || !sessionRes.session?.isMaster) {
-      return NextResponse.json(
-        { success: false, error: 'Only Declan Salo can access withdrawal logs.' },
-        { status: 403 }
-      );
+    if (saloKey && (await verifyMasterPassword(saloKey))) {
+      // Authorized via Master Key
+    } else {
+      if (!token) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
+
+      const sessionRes = await validateSession(token);
+      if (!sessionRes.valid || !sessionRes.session?.isMaster) {
+        return NextResponse.json(
+          { success: false, error: 'Only Declan Salo can access withdrawal logs.' },
+          { status: 403 }
+        );
+      }
     }
 
     const withdrawals = await getWithdrawalRequests();
@@ -34,18 +42,26 @@ export async function POST(req: NextRequest) {
   try {
     const token =
       req.cookies.get('moback_session_token')?.value ||
-      req.headers.get('x-session-token');
+      req.cookies.get('salo_master_token')?.value ||
+      req.headers.get('x-session-token') ||
+      req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
 
-    if (!token) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const saloKey = req.headers.get('x-salo-key');
 
-    const sessionRes = await validateSession(token);
-    if (!sessionRes.valid || !sessionRes.session?.isMaster) {
-      return NextResponse.json(
-        { success: false, error: 'Only Declan Salo can update withdrawal status.' },
-        { status: 403 }
-      );
+    if (saloKey && (await verifyMasterPassword(saloKey))) {
+      // Authorized via Master Key
+    } else {
+      if (!token) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
+
+      const sessionRes = await validateSession(token);
+      if (!sessionRes.valid || !sessionRes.session?.isMaster) {
+        return NextResponse.json(
+          { success: false, error: 'Only Declan Salo can update withdrawal status.' },
+          { status: 403 }
+        );
+      }
     }
 
     const body = await req.json();

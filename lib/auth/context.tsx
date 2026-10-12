@@ -3,6 +3,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { UserProfile, AuthSessionInfo } from '@/types';
 
+interface LoginResult {
+  success: boolean;
+  requires2FA?: boolean;
+  otpId?: string;
+  maskedEmail?: string;
+  error?: string;
+}
+
 interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
@@ -11,7 +19,9 @@ interface AuthContextType {
   isMaster: boolean;
   revocationNotice: string | null;
   clearRevocationNotice: () => void;
-  login: (email: string, pass: string, deviceName?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, pass: string, deviceName?: string) => Promise<LoginResult>;
+  verifyOtp: (otpId: string, code: string, deviceName?: string) => Promise<{ success: boolean; error?: string }>;
+  resendOtp: (otpId: string, deviceName?: string) => Promise<{ success: boolean; newOtpId?: string; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (profile: {
     name?: string;
@@ -32,6 +42,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'moback_session_token';
 const NOTICE_KEY = 'moback_revocation_notice';
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000ms)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -42,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [revocationNotice, setRevocationNotice] = useState<string | null>(null);
 
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const clearRevocationNotice = () => {
     setRevocationNotice(null);
@@ -161,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // network error, ignore single poll
       }
-    }, 3500);
+    }, 4000);
 
     return () => {
       if (heartbeatRef.current) {
@@ -171,12 +183,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated]);
 
+  // -------------------------------------------------------------
+  // 5-Minute Inactivity Auto-Logout Tracker
+  // Automatically logs user out and locks account if idle for 5 minutes
+  // -------------------------------------------------------------
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+
+    if (!isAuthenticated) return;
+
+    inactivityTimerRef.current = setTimeout(async () => {
+      const lockNotice =
+        'Account Locked: You have been automatically logged out due to 5 minutes of inactivity for portfolio security.';
+
+      const currentToken = localStorage.getItem(TOKEN_KEY);
+      if (currentToken) {
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${currentToken}` },
+          });
+        } catch {
+          // ignore
+        }
+      }
+
+      localStorage.removeItem(TOKEN_KEY);
+      try {
+        sessionStorage.setItem(NOTICE_KEY, lockNotice);
+      } catch {
+        // ignore
+      }
+
+      setUser(null);
+      setSessionId(null);
+      setIsMaster(false);
+      setIsAuthenticated(false);
+      setRevocationNotice(lockNotice);
+    }, INACTIVITY_TIMEOUT_MS);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+      return;
+    }
+
+    resetInactivityTimer();
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    const handleActivity = () => {
+      resetInactivityTimer();
+    };
+
+    activityEvents.forEach((ev) => {
+      window.addEventListener(ev, handleActivity, { passive: true });
+    });
+
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+      activityEvents.forEach((ev) => {
+        window.removeEventListener(ev, handleActivity);
+      });
+    };
+  }, [isAuthenticated, resetInactivityTimer]);
+
   const login = async (
     email: string,
     pass: string,
     deviceName?: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
+  ): Promise<LoginResult> => {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -187,8 +272,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setIsLoading(false);
         return { success: false, error: data.error || 'Authentication failed' };
+      }
+
+      // Check if 2-Factor Authentication (OTP) is required
+      if (data.requires2FA) {
+        return {
+          success: true,
+          requires2FA: true,
+          otpId: data.otpId,
+          maskedEmail: data.maskedEmail,
+        };
       }
 
       localStorage.setItem(TOKEN_KEY, data.token);
@@ -198,11 +292,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSessionId(data.sessionId);
       setIsMaster(!!data.isMaster);
       setIsAuthenticated(true);
-      setIsLoading(false);
+      return { success: true, requires2FA: false };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Login request failed';
+      return { success: false, error: message };
+    }
+  };
+
+  const verifyOtp = async (
+    otpId: string,
+    code: string,
+    deviceName?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpId, code, deviceName }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Verification code failed' };
+      }
+
+      localStorage.setItem(TOKEN_KEY, data.token);
+      clearRevocationNotice();
+
+      setUser(data.user);
+      setSessionId(data.sessionId);
+      setIsMaster(!!data.isMaster);
+      setIsAuthenticated(true);
       return { success: true };
     } catch (err: unknown) {
-      setIsLoading(false);
-      const message = err instanceof Error ? err.message : 'Login request failed';
+      const message = err instanceof Error ? err.message : 'OTP verification failed';
+      return { success: false, error: message };
+    }
+  };
+
+  const resendOtp = async (
+    otpId: string,
+    deviceName?: string
+  ): Promise<{ success: boolean; newOtpId?: string; error?: string }> => {
+    try {
+      const res = await fetch('/api/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpId, deviceName }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Failed to resend code' };
+      }
+
+      return { success: true, newOtpId: data.otpId };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to request new code';
       return { success: false, error: message };
     }
   };
@@ -243,13 +389,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         body: JSON.stringify(profile),
       });
+
       const data = await res.json();
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Failed to update profile' };
       }
-      if (data.user) {
-        setUser(data.user);
-      }
+
+      setUser(data.user);
       return { success: true, user: data.user };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Network error';
@@ -267,12 +413,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const res = await fetch('/api/auth/sessions', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
+
       const data = await res.json();
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Failed to fetch sessions' };
       }
+
       return { success: true, sessions: data.sessions };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Network error';
@@ -295,10 +445,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         body: JSON.stringify({ sessionId: targetSessionId }),
       });
+
       const data = await res.json();
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Failed to revoke session' };
       }
+
       return { success: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Network error';
@@ -321,12 +473,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ allOthers: true }),
+        body: JSON.stringify({ revokeAllOthers: true }),
       });
+
       const data = await res.json();
       if (!res.ok || !data.success) {
-        return { success: false, error: data.error || 'Failed to revoke sessions' };
+        return { success: false, error: data.error || 'Failed to revoke other sessions' };
       }
+
       return { success: true, count: data.revokedCount };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Network error';
@@ -377,6 +531,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         revocationNotice,
         clearRevocationNotice,
         login,
+        verifyOtp,
+        resendOtp,
         logout,
         updateProfile,
         fetchSessions,

@@ -5,6 +5,20 @@ import {
   getUserProfile,
   parseDeviceFromUserAgent,
 } from '@/lib/auth/serverStore';
+import {
+  getTwoFactorSettings,
+  generateOtp,
+  sendOtpEmail,
+} from '@/lib/auth/twoFactor';
+
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return 'authorized security email';
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return `${local[0]}•@${domain}`;
+  const first = local[0];
+  const last = local[local.length - 1];
+  return `${first}${'•'.repeat(Math.min(local.length - 2, 5))}${last}@${domain}`;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,13 +42,45 @@ export async function POST(req: NextRequest) {
 
     const ua = req.headers.get('user-agent');
     const detectedDevice = deviceName || parseDeviceFromUserAgent(ua);
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || '127.0.0.1';
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0] ||
+      req.headers.get('x-real-ip') ||
+      '127.0.0.1';
 
-    const session = await createSession(detectedDevice, ip, 'Nashville Tennessee, United States');
+    // Check if Two-Factor Authentication is active
+    const twoFactorSettings = await getTwoFactorSettings();
+
+    if (twoFactorSettings.enabled) {
+      // Generate OTP and dispatch to Declan Salo's security email
+      const { otpId, code, targetEmail } = await generateOtp(
+        email,
+        detectedDevice,
+        ip
+      );
+
+      const emailResult = await sendOtpEmail(code, targetEmail, detectedDevice, ip);
+      console.log('[2FA] OTP email result:', JSON.stringify(emailResult));
+
+      return NextResponse.json({
+        success: true,
+        requires2FA: true,
+        otpId,
+        maskedEmail: maskEmail(targetEmail),
+        message: `Security code dispatched to ${maskEmail(targetEmail)}`,
+      });
+    }
+
+    // If 2FA is explicitly disabled by admin, proceed with direct session
+    const session = await createSession(
+      detectedDevice,
+      ip,
+      'Nashville Tennessee, United States'
+    );
     const user = await getUserProfile();
 
     return NextResponse.json({
       success: true,
+      requires2FA: false,
       token: session.token,
       sessionId: session.id,
       deviceName: session.deviceName,

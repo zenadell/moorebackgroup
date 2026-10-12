@@ -6,14 +6,14 @@ export const INITIAL_HOLDINGS: StockHolding[] = [
     ticker: 'LMT',
     name: 'Lockheed Martin Corporation',
     sector: 'Defense & Aerospace',
-    shares: 32897,
+    shares: 38523,
     price: 509.09,
     change: 1.15,
     changePercent: 0.23,
     prePostPrice: 509.80,
     prePostChange: 0.71,
-    totalValue: 16747533.73,
-    weight: 13.89,
+    totalValue: 19611718.18,
+    weight: 16.27,
     currency: 'USD',
     logoLetter: 'L',
     logoBg: '#1e3a8a',
@@ -343,26 +343,25 @@ export const INITIAL_HOLDINGS: StockHolding[] = [
   }
 ];
 
-export const LIQUID_CASH_RESERVES = 2864184.45;
+export const LIQUID_CASH_RESERVES = 0.00;
 
 export const PORTFOLIO_SUMMARY: PortfolioSummary = {
-  totalBalance: 120570000.00, // Exactly $120.57 Million
+  totalBalance: 120570000.00, // Exactly $120.57 Million (100% Deployed in Equities)
   dailyPnL: 1842500.00,       // +$1.84M (+1.55%)
   dailyPnLPercent: 1.55,
   monthlyGrowth: 12.4,        // +12.4% (matching reference)
   conversionRate: 4.8,        // 4.8% (matching reference)
-  cashReserves: LIQUID_CASH_RESERVES,
+  cashReserves: 0.00,         // Zero liquid cash - 100% allocated in equities
   activeHoldingsCount: INITIAL_HOLDINGS.length,
 };
 
 export const SECTOR_ALLOCATIONS: SectorAllocation[] = [
-  { sector: 'Defense & Aerospace', percentage: 48.8, value: 58838350.00, color: '#2563eb' },
-  { sector: 'Semiconductors', percentage: 20.7, value: 24908000.00, color: '#38bdf8' },
-  { sector: 'Enterprise AI', percentage: 11.6, value: 13920000.00, color: '#818cf8' },
-  { sector: 'Hardware & Cloud', percentage: 9.6, value: 11610500.00, color: '#c084fc' },
-  { sector: 'Industrial', percentage: 5.1, value: 6198000.00, color: '#f59e0b' },
-  { sector: 'Cash Reserves', percentage: 3.9, value: 4649150.00, color: '#94a3b8' },
-  { sector: 'Clean Energy', percentage: 2.7, value: 3200000.00, color: '#10b981' },
+  { sector: 'Defense & Aerospace', percentage: 52.5, value: 63247179.13, color: '#2563eb' },
+  { sector: 'Semiconductors', percentage: 19.8, value: 23862682.71, color: '#38bdf8' },
+  { sector: 'Enterprise AI', percentage: 11.1, value: 13340227.50, color: '#818cf8' },
+  { sector: 'Hardware & Cloud', percentage: 9.2, value: 11122646.26, color: '#c084fc' },
+  { sector: 'Industrial', percentage: 4.9, value: 5936611.70, color: '#f59e0b' },
+  { sector: 'Clean Energy', percentage: 2.5, value: 3060652.70, color: '#10b981' },
 ];
 
 export const RECENT_TRANSACTIONS: Transaction[] = [

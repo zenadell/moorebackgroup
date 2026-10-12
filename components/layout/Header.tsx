@@ -1,14 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu, ArrowDownLeft, ArrowUpRight, ShieldAlert } from 'lucide-react';
+import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
 
 interface HeaderProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onNavigateSettings?: () => void;
-  onNavigateAdmin?: () => void;
   onToggleMobileMenu?: () => void;
   onOpenDeposit?: () => void;
   onOpenWithdraw?: () => void;
@@ -18,12 +17,11 @@ export function Header({
   searchQuery,
   onSearchChange,
   onNavigateSettings,
-  onNavigateAdmin,
   onToggleMobileMenu,
   onOpenDeposit,
   onOpenWithdraw,
 }: HeaderProps) {
-  const { user, isMaster, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showPresentationMenu, setShowPresentationMenu] = useState(false);
   const [presentationMode, setPresentationMode] = useState<'Presented' | 'Personal' | 'Detailed'>('Presented');
@@ -96,8 +94,8 @@ export function Header({
               whiteSpace: 'nowrap',
             }}
           >
-            <span className="hidden md:inline">Orion Dashboard</span>
-            <span className="hidden min-[380px]:inline md:hidden">Orion</span>
+            <span className="hidden md:inline">MooreBach Group</span>
+            <span className="hidden min-[380px]:inline md:hidden">MooreBach</span>
           </span>
         </div>
       </div>
@@ -427,7 +425,7 @@ export function Header({
             >
               <div className="border-b border-slate-100 px-3 py-2" style={{ borderBottom: '1px solid #f1f5f9', padding: '8px 12px' }}>
                 <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{user?.name || 'Declan Salo'}</p>
-                <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{user?.email || 'declansalo@gmail.com'}</p>
+                <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{user?.email || 'declansalo1@gmail.com'}</p>
                 {(user?.location || 'Nashville Tennessee, United States') && (
                   <p style={{ fontSize: '10px', color: '#64748b', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>📍</span> {user?.location || 'Nashville Tennessee, United States'}
@@ -437,14 +435,14 @@ export function Header({
                   <span
                     style={{
                       borderRadius: '4px',
-                      backgroundColor: isMaster ? '#eff6ff' : '#f1f5f9',
-                      color: isMaster ? '#1d4ed8' : '#475569',
+                      backgroundColor: '#eff6ff',
+                      color: '#1d4ed8',
                       fontSize: '10px',
                       fontWeight: 600,
                       padding: '2px 6px',
                     }}
                   >
-                    {isMaster ? '👑 Master Account' : 'Guest Viewer'}
+                    Verified Portfolio
                   </span>
                   <span
                     style={{
@@ -463,32 +461,6 @@ export function Header({
               </div>
 
               <div style={{ paddingTop: '4px' }}>
-                {onNavigateAdmin && isMaster && (
-                  <button
-                    onClick={() => {
-                      setShowProfileMenu(false);
-                      onNavigateAdmin();
-                    }}
-                    style={{
-                      display: 'flex',
-                      width: '100%',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 12px',
-                      fontSize: '12px',
-                      color: '#1e40af',
-                      fontWeight: 600,
-                      border: 'none',
-                      backgroundColor: '#eff6ff',
-                      cursor: 'pointer',
-                      borderRadius: '8px',
-                      marginBottom: '4px',
-                    }}
-                  >
-                    <ShieldAlert style={{ width: '14px', height: '14px', color: '#2563eb' }} />
-                    Master Admin Control
-                  </button>
-                )}
                 {onNavigateSettings && (
                   <button
                     onClick={() => {

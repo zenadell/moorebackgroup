@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminConfig, logWithdrawalAttempt } from '@/lib/admin/service';
 import { parseDeviceFromUserAgent } from '@/lib/auth/serverStore';
+import { validateCryptoAddress } from '@/lib/crypto/blockchain';
 
 export async function GET() {
   try {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
   try {
     const config = await getAdminConfig();
     const body = await req.json();
-    const { amount, rail, beneficiary, destination } = body;
+    const { amount, rail, beneficiary, destination, asset, network, recipientAddress } = body;
 
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) {
@@ -29,6 +30,27 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'Please enter a valid withdrawal amount.' },
         { status: 400 }
       );
+    }
+
+    // Strict on-chain address validation if crypto rail is selected
+    if (rail === 'crypto') {
+      const cryptoAsset = (asset || 'USDT') as 'USDT' | 'BTC' | 'ETH';
+      const cryptoNetwork = network || (cryptoAsset === 'USDT' ? 'TRC20' : cryptoAsset === 'BTC' ? 'Native' : 'ERC20');
+      const targetAddress = recipientAddress || destination;
+
+      const validation = validateCryptoAddress(cryptoAsset, cryptoNetwork, targetAddress);
+      if (!validation.valid) {
+        return NextResponse.json(
+          {
+            success: false,
+            validationError: true,
+            error: validation.error || 'Invalid crypto destination address.',
+            instruction: validation.instruction,
+            detectedFormat: validation.detectedFormat,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const ipAddress =
@@ -40,12 +62,17 @@ export async function POST(req: NextRequest) {
 
     const isBlocked = !config.withdrawals.enabled;
 
+    const finalDestination =
+      rail === 'crypto'
+        ? `${asset || 'USDT'} (${network || 'TRC20'}): ${recipientAddress || destination}`
+        : destination || 'Unspecified account';
+
     // Log the actual attempt into persistent withdrawals log
     const recorded = await logWithdrawalAttempt({
       amount: parsedAmount,
       rail: rail || 'fedwire',
       beneficiary: beneficiary || 'Declan Salo',
-      destination: destination || 'Unspecified account',
+      destination: finalDestination,
       status: isBlocked ? 'blocked' : 'pending',
       statusReason: isBlocked ? config.withdrawals.lockMessage : 'Awaiting administrative clearance',
       ipAddress,

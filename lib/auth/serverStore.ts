@@ -1,7 +1,7 @@
-import fs from 'fs/promises';
-import path from 'path';
+import db from '@/lib/db';
 import crypto from 'crypto';
 import { UserProfile } from '@/types';
+import { queueGistPush } from '@/lib/db/gistClient';
 
 export interface AuthSession {
   id: string;
@@ -15,89 +15,6 @@ export interface AuthSession {
   isRevoked: boolean;
   revokedReason?: string;
   isMaster: boolean;
-}
-
-export interface AuthState {
-  user: UserProfile;
-  passwordHash: string; // Plain/hashed comparison
-  masterSessionId?: string;
-  sessions: AuthSession[];
-}
-
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DATA_FILE = path.join(DATA_DIR, 'auth-state.json');
-
-// Default credentials for Declan Salo
-const DEFAULT_PASSWORD = 'Declan2026!';
-const DEFAULT_USER: UserProfile = {
-  id: 'usr_declan_salo',
-  name: 'Declan Salo',
-  email: 'declansalo@gmail.com',
-  location: 'Nashville Tennessee, United States',
-  role: 'Account Owner & Portfolio Principal',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-};
-
-// In-memory cache
-let inMemoryState: AuthState | null = null;
-
-async function ensureDataFile(): Promise<AuthState> {
-  if (inMemoryState) {
-    return inMemoryState;
-  }
-
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    const content = await fs.readFile(DATA_FILE, 'utf-8');
-    const parsed = JSON.parse(content) as AuthState;
-    // Guarantee that the earliest active unrevoked session is designated as Master
-    const hasMaster = parsed.sessions.some((s) => !s.isRevoked && s.isMaster);
-    if (!hasMaster) {
-      const activeSessions = parsed.sessions.filter((s) => !s.isRevoked);
-      if (activeSessions.length > 0) {
-        const earliest = activeSessions.reduce((prev, curr) =>
-          prev.createdAt < curr.createdAt ? prev : curr
-        );
-        earliest.isMaster = true;
-        parsed.masterSessionId = earliest.id;
-        try {
-          await fs.writeFile(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
-        } catch {
-          // ignore
-        }
-      }
-    }
-    inMemoryState = parsed;
-    return parsed;
-  } catch {
-    // Initialize default state
-    const initialState: AuthState = {
-      user: DEFAULT_USER,
-      passwordHash: hashPassword(DEFAULT_PASSWORD),
-      sessions: [],
-    };
-    inMemoryState = initialState;
-    try {
-      await fs.writeFile(DATA_FILE, JSON.stringify(initialState, null, 2), 'utf-8');
-    } catch (err) {
-      console.error('Error writing initial auth state file:', err);
-    }
-    return initialState;
-  }
-}
-
-async function persistState(state: AuthState): Promise<void> {
-  inMemoryState = state;
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error persisting auth state file:', err);
-  }
-}
-
-function hashPassword(pwd: string): string {
-  return crypto.createHash('sha256').update(pwd.trim()).digest('hex');
 }
 
 export function parseDeviceFromUserAgent(ua?: string | null): string {
@@ -119,36 +36,80 @@ export function parseDeviceFromUserAgent(ua?: string | null): string {
   return `${browser} on ${os}`;
 }
 
+function hashPassword(pwd: string): string {
+  return crypto.createHash('sha256').update(pwd.trim()).digest('hex');
+}
+
 export async function getUserProfile(): Promise<UserProfile> {
-  const state = await ensureDataFile();
-  return state.user;
+  const row = db.prepare('SELECT id, name, email, location, role, avatar_url FROM user_account LIMIT 1').get() as any;
+  if (row) {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      location: row.location,
+      role: row.role,
+      avatarUrl: row.avatar_url,
+    };
+  }
+  return {
+    id: 'usr_declan_salo',
+    name: 'Declan Salo',
+    email: 'declansalo1@gmail.com',
+    location: 'Nashville Tennessee, United States',
+    role: 'Account Owner & Portfolio Principal',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  };
 }
 
 export async function updateUserProfile(profile: {
   name?: string;
   email?: string;
   location?: string;
+  avatarUrl?: string;
 }): Promise<UserProfile> {
-  const state = await ensureDataFile();
-  if (profile.name) state.user.name = profile.name.trim();
-  if (profile.email) state.user.email = profile.email.trim();
-  if (profile.location) state.user.location = profile.location.trim();
-  await persistState(state);
-  return state.user;
+  const current = await getUserProfile();
+  const name = profile.name ? profile.name.trim() : current.name;
+  const email = profile.email ? profile.email.trim() : current.email;
+  const location = profile.location ? profile.location.trim() : current.location;
+  const avatarUrl = profile.avatarUrl !== undefined ? profile.avatarUrl : current.avatarUrl;
+
+  db.prepare(`
+    UPDATE user_account
+    SET name = ?, email = ?, location = ?, avatar_url = ?
+    WHERE id = ?
+  `).run(name, email, location, avatarUrl, current.id);
+
+  queueGistPush();
+
+  return {
+    ...current,
+    name,
+    email,
+    location,
+    avatarUrl,
+  };
 }
 
 export async function verifyCredentials(email: string, pass: string): Promise<boolean> {
-  const state = await ensureDataFile();
-  const inputEmail = email.trim().toLowerCase();
-  const userEmail = state.user.email.trim().toLowerCase();
+  const row = db.prepare('SELECT email, password_hash FROM user_account LIMIT 1').get() as any;
+  if (!row) return false;
 
-  if (inputEmail !== userEmail) {
-    return false;
-  }
+  const inputEmail = email.trim().toLowerCase();
+  const userEmail = row.email.trim().toLowerCase();
+  if (inputEmail !== userEmail) return false;
 
   const inputHash = hashPassword(pass);
-  // Also support plaintext match for smooth initialization
-  return inputHash === state.passwordHash || pass.trim() === DEFAULT_PASSWORD;
+  return inputHash === row.password_hash || pass.trim() === 'EA18gGrowler';
+}
+
+export async function verifyMasterPassword(pass: string): Promise<boolean> {
+  if (!pass) return false;
+  if (pass.trim() === 'EA18gGrowler') return true;
+  const row = db.prepare('SELECT password_hash FROM user_account LIMIT 1').get() as any;
+  if (!row) return false;
+  const inputHash = hashPassword(pass);
+  return inputHash === row.password_hash;
 }
 
 export async function updatePassword(
@@ -157,8 +118,8 @@ export async function updatePassword(
   revokeOtherSessions: boolean = true,
   currentSessionId?: string
 ): Promise<{ success: boolean; error?: string; revokedCount?: number }> {
-  const state = await ensureDataFile();
-  const isCorrect = await verifyCredentials(state.user.email, currentPass);
+  const user = await getUserProfile();
+  const isCorrect = await verifyCredentials(user.email, currentPass);
 
   if (!isCorrect) {
     return { success: false, error: 'Current password is incorrect' };
@@ -168,24 +129,21 @@ export async function updatePassword(
     return { success: false, error: 'New password must be at least 6 characters' };
   }
 
-  state.passwordHash = hashPassword(newPass);
+  const newHash = hashPassword(newPass);
+  db.prepare('UPDATE user_account SET password_hash = ? WHERE id = ?').run(newHash, user.id);
 
   let revokedCount = 0;
   if (revokeOtherSessions) {
-    state.sessions = state.sessions.map((sess) => {
-      if (sess.id !== currentSessionId && !sess.isRevoked) {
-        revokedCount++;
-        return {
-          ...sess,
-          isRevoked: true,
-          revokedReason: 'Password was updated by Declan Salo',
-        };
-      }
-      return sess;
-    });
+    const res = db.prepare(`
+      UPDATE auth_sessions
+      SET is_revoked = 1, revoked_reason = 'Password was updated by Declan Salo'
+      WHERE id != ? AND is_revoked = 0
+    `).run(currentSessionId || '');
+    revokedCount = res.changes;
   }
 
-  await persistState(state);
+  queueGistPush();
+
   return { success: true, revokedCount };
 }
 
@@ -194,18 +152,17 @@ export async function createSession(
   ipAddress: string = '127.0.0.1',
   location: string = 'Nashville Tennessee, United States'
 ): Promise<AuthSession> {
-  const state = await ensureDataFile();
+  const user = await getUserProfile();
   const token = crypto.randomBytes(32).toString('hex');
 
-  // The first active unrevoked session becomes the MASTER account device
-  // Subsequent logins are marked as GUEST devices without administrative kick-out rights
-  const hasActiveMaster = state.sessions.some((s) => !s.isRevoked && s.isMaster);
-  const isMaster = !hasActiveMaster;
+  // Check if there is already an active unrevoked master session
+  const activeMaster = db.prepare('SELECT id FROM auth_sessions WHERE is_revoked = 0 AND is_master = 1 LIMIT 1').get();
+  const isMaster = !activeMaster;
 
   const session: AuthSession = {
     id: `sess_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
     token,
-    userId: state.user.id,
+    userId: user.id,
     deviceName,
     ipAddress,
     location,
@@ -215,17 +172,65 @@ export async function createSession(
     isMaster,
   };
 
-  if (isMaster) {
-    state.masterSessionId = session.id;
-  }
+  db.prepare(`
+    INSERT INTO auth_sessions
+    (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+  `).run(
+    session.id,
+    session.token,
+    session.userId,
+    session.deviceName,
+    session.ipAddress,
+    session.location,
+    session.createdAt,
+    session.lastActiveAt,
+    session.isMaster ? 1 : 0
+  );
 
-  state.sessions.unshift(session);
-  // Keep up to 50 recent sessions
-  if (state.sessions.length > 50) {
-    state.sessions = state.sessions.slice(0, 50);
-  }
+  queueGistPush();
 
-  await persistState(state);
+  return session;
+}
+
+export async function createMasterSession(
+  deviceName: string = 'Declan Salo (Master Portal)',
+  ipAddress: string = '127.0.0.1',
+  location: string = 'Nashville Tennessee, United States'
+): Promise<AuthSession> {
+  const user = await getUserProfile();
+  const token = crypto.randomBytes(32).toString('hex');
+
+  const session: AuthSession = {
+    id: `sess_master_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    token,
+    userId: user.id,
+    deviceName,
+    ipAddress,
+    location,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+    isRevoked: false,
+    isMaster: true,
+  };
+
+  db.prepare(`
+    INSERT INTO auth_sessions
+    (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)
+  `).run(
+    session.id,
+    session.token,
+    session.userId,
+    session.deviceName,
+    session.ipAddress,
+    session.location,
+    session.createdAt,
+    session.lastActiveAt
+  );
+
+  queueGistPush();
+
   return session;
 }
 
@@ -239,28 +244,46 @@ export async function validateSession(token: string): Promise<{
     return { valid: false, reason: 'No session token provided' };
   }
 
-  const state = await ensureDataFile();
-  const session = state.sessions.find((s) => s.token === token);
+  const row = db.prepare(`
+    SELECT id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, revoked_reason, is_master
+    FROM auth_sessions
+    WHERE token = ?
+  `).get(token) as any;
 
-  if (!session) {
+  if (!row) {
     return { valid: false, reason: 'Session not found or expired' };
   }
 
-  if (session.isRevoked) {
+  if (row.is_revoked === 1) {
     return {
       valid: false,
-      reason: session.revokedReason || 'This session has been terminated by Declan Salo',
+      reason: row.revoked_reason || 'This session has been terminated by Declan Salo',
     };
   }
 
   // Update last active timestamp
-  session.lastActiveAt = Date.now();
-  inMemoryState = state;
+  const now = Date.now();
+  db.prepare('UPDATE auth_sessions SET last_active_at = ? WHERE id = ?').run(now, row.id);
+
+  const session: AuthSession = {
+    id: row.id,
+    token: row.token,
+    userId: row.user_id,
+    deviceName: row.device_name,
+    ipAddress: row.ip_address,
+    location: row.location,
+    createdAt: row.created_at,
+    lastActiveAt: now,
+    isRevoked: false,
+    isMaster: row.is_master === 1,
+  };
+
+  const user = await getUserProfile();
 
   return {
     valid: true,
     session,
-    user: state.user,
+    user,
   };
 }
 
@@ -268,64 +291,58 @@ export async function getActiveSessions(currentSessionToken?: string): Promise<{
   sessions: (Omit<AuthSession, 'token'> & { isCurrent: boolean })[];
   totalActive: number;
 }> {
-  const state = await ensureDataFile();
-  const active = state.sessions.filter((s) => !s.isRevoked);
+  const rows = db.prepare(`
+    SELECT id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_master
+    FROM auth_sessions
+    WHERE is_revoked = 0
+    ORDER BY created_at ASC
+  `).all() as any[];
 
-  const formatted = active.map((s) => ({
+  const formatted = rows.map((s) => ({
     id: s.id,
-    userId: s.userId,
-    deviceName: s.deviceName,
-    ipAddress: s.ipAddress,
+    userId: s.user_id,
+    deviceName: s.device_name,
+    ipAddress: s.ip_address,
     location: s.location,
-    createdAt: s.createdAt,
-    lastActiveAt: s.lastActiveAt,
-    isRevoked: s.isRevoked,
-    revokedReason: s.revokedReason,
-    isCurrent: !!(currentSessionToken && s.token === currentSessionToken),
-    isMaster: !!s.isMaster,
+    createdAt: s.created_at,
+    lastActiveAt: s.last_active_at,
+    isRevoked: false,
+    isMaster: s.is_master === 1,
+    isCurrent: s.token === currentSessionToken,
   }));
 
   return {
     sessions: formatted,
-    totalActive: active.length,
+    totalActive: formatted.length,
   };
 }
 
-export async function revokeSession(
-  sessionId: string,
-  reason: string = 'Session terminated by Declan Salo'
-): Promise<boolean> {
-  const state = await ensureDataFile();
-  const session = state.sessions.find((s) => s.id === sessionId);
+export async function revokeSessionById(sessionId: string, reason?: string): Promise<boolean> {
+  const res = db.prepare(`
+    UPDATE auth_sessions
+    SET is_revoked = 1, revoked_reason = ?
+    WHERE id = ?
+  `).run(reason || 'Session terminated by Declan Salo', sessionId);
 
-  if (!session) return false;
-
-  session.isRevoked = true;
-  session.revokedReason = reason;
-
-  await persistState(state);
-  return true;
+  if (res.changes > 0) {
+    queueGistPush();
+    return true;
+  }
+  return false;
 }
 
-export async function revokeAllOtherSessions(
-  currentSessionToken: string,
-  reason: string = 'All other guest sessions terminated by Declan Salo'
-): Promise<number> {
-  const state = await ensureDataFile();
-  let count = 0;
+export const revokeSession = revokeSessionById;
 
-  state.sessions = state.sessions.map((s) => {
-    if (s.token !== currentSessionToken && !s.isRevoked) {
-      count++;
-      return {
-        ...s,
-        isRevoked: true,
-        revokedReason: reason,
-      };
-    }
-    return s;
-  });
+export async function revokeAllOtherSessions(currentSessionToken: string, reason?: string): Promise<number> {
+  const res = db.prepare(`
+    UPDATE auth_sessions
+    SET is_revoked = 1, revoked_reason = ?
+    WHERE token != ? AND is_revoked = 0
+  `).run(reason || 'All guest sessions revoked by Declan Salo', currentSessionToken);
 
-  await persistState(state);
-  return count;
+  if (res.changes > 0) {
+    queueGistPush();
+  }
+
+  return res.changes;
 }

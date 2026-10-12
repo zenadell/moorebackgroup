@@ -22,6 +22,8 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
+import { copyToClipboard } from '@/lib/utils/clipboard';
+import { ModernTopBar, ModernButtonSpinner } from '@/components/ui/ModernLoader';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -209,13 +211,7 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
   const current = assetConfigs[selectedAsset];
 
   const handleCopy = () => {
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        navigator.clipboard.writeText(currentAddress);
-      }
-    } catch {
-      // Fallback
-    }
+    copyToClipboard(currentAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
@@ -361,7 +357,7 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
   const handleCreditDeposit = (txId: string, amount: number, symbol: string) => {
     if (creditedTxs.includes(txId)) return;
     setCreditedTxs((prev) => [...prev, txId]);
-    setCreditNotice(`Successfully credited ${amount} ${symbol} to Declan Salo's Liquid Cash Reserves!`);
+    setCreditNotice(`Successfully credited ${amount} ${symbol} to Declan Salo's Portfolio Holdings!`);
 
     if (onCreditSuccess) {
       onCreditSuccess(amount, symbol, txId);
@@ -406,8 +402,10 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
+        <ModernTopBar active={verificationStatus === 'scanning' || isSavingAddress} />
         {/* Header */}
         <div
           style={{
@@ -438,7 +436,7 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
                 Deposit Capital (Crypto Gateway)
               </h2>
               <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>
-                Declan Salo Portfolio • Liquid Cash Reserves ($120.57M)
+                Declan Salo Portfolio • Total Equity Holdings ($120.57M)
               </p>
             </div>
           </div>
@@ -1314,12 +1312,12 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
                             {isCredited ? (
                               <>
                                 <CheckCheck style={{ width: '13px', height: '13px' }} />
-                                <span>Credited to Reserves</span>
+                                <span>Credited to Portfolio</span>
                               </>
                             ) : (
                               <>
                                 <ArrowDownLeft style={{ width: '13px', height: '13px' }} />
-                                <span>Credit to Cash Reserves</span>
+                                <span>Credit to Portfolio</span>
                               </>
                             )}
                           </button>
@@ -1404,12 +1402,12 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
                         {creditedTxs.includes(txLookupResult.txId) ? (
                           <>
                             <CheckCheck style={{ width: '13px', height: '13px' }} />
-                            <span>Credited to Reserves</span>
+                            <span>Credited to Portfolio</span>
                           </>
                         ) : (
                           <>
                             <ArrowDownLeft style={{ width: '13px', height: '13px' }} />
-                            <span>Credit to Cash Reserves</span>
+                            <span>Credit to Portfolio</span>
                           </>
                         )}
                       </button>

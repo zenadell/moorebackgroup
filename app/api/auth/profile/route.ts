@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateSession, updateUserProfile } from '@/lib/auth/serverStore';
+import { validateSession, updateUserProfile, getUserProfile } from '@/lib/auth/serverStore';
+
+export async function GET() {
+  try {
+    const user = await getUserProfile();
+    return NextResponse.json({ success: true, user });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { name, email, location } = body;
+    const { name, email, location, avatarUrl } = body;
 
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return NextResponse.json(
@@ -42,6 +52,7 @@ export async function POST(req: NextRequest) {
       name,
       email,
       location,
+      avatarUrl,
     });
 
     return NextResponse.json({

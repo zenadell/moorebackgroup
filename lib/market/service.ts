@@ -1,5 +1,5 @@
 import { StockHolding, PortfolioSummary } from '@/types';
-import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, LIQUID_CASH_RESERVES } from '@/lib/data/holdings';
+import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY } from '@/lib/data/holdings';
 
 export interface MarketDataProvider {
   getHoldings(): Promise<StockHolding[]>;
@@ -25,7 +25,7 @@ class DefaultMarketDataProvider implements MarketDataProvider {
 
   async getPortfolioSummary(): Promise<PortfolioSummary> {
     const totalStockValue = this.holdings.reduce((acc, h) => acc + h.totalValue, 0);
-    const totalBalance = totalStockValue + LIQUID_CASH_RESERVES;
+    const totalBalance = totalStockValue;
     
     return {
       ...this.summary,
@@ -36,7 +36,7 @@ class DefaultMarketDataProvider implements MarketDataProvider {
 
   async addHolding(newStock: Omit<StockHolding, 'id' | 'totalValue' | 'weight'>): Promise<StockHolding> {
     const totalVal = newStock.shares * newStock.price;
-    const currentTotal = this.holdings.reduce((sum, h) => sum + h.totalValue, 0) + LIQUID_CASH_RESERVES + totalVal;
+    const currentTotal = this.holdings.reduce((sum, h) => sum + h.totalValue, 0) + totalVal;
     
     const holding: StockHolding = {
       ...newStock,

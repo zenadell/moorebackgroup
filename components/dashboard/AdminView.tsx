@@ -57,7 +57,7 @@ export function AdminView() {
   const [withdrawalConfig, setWithdrawalConfig] = useState<AdminConfigFile['withdrawals']>({
     enabled: false,
     lockMessage:
-      'Withdrawal window currently closed for quarterly asset rebalancing and cryptographic audit (ERR-WTH-88429-CLOSED). Contact portfolio principal Declan Salo for manual clearance.',
+      'Capital disbursements are locked until full contract maturity. Early releases cannot be processed prior to the scheduled contract end date. Please refer to your portfolio terms for details.',
     minAmount: 1000,
     maxAmount: 5000000,
     allowedRails: {
