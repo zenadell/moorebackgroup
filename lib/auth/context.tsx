@@ -42,6 +42,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'moback_session_token';
 const NOTICE_KEY = 'moback_revocation_notice';
+const LAST_ACTIVITY_KEY = 'moback_last_activity';
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000ms) of zero user interaction
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -124,6 +125,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Check if 5-minute inactivity expired while the tab was closed or away
+    const lastActiveStr = localStorage.getItem(LAST_ACTIVITY_KEY);
+    if (lastActiveStr) {
+      const lastActive = parseInt(lastActiveStr, 10);
+      if (!isNaN(lastActive) && Date.now() - lastActive >= INACTIVITY_TIMEOUT_MS) {
+        const lockNotice =
+          'Account Locked: You have been automatically logged out due to 5 minutes of inactivity for portfolio security.';
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(LAST_ACTIVITY_KEY);
+        try {
+          sessionStorage.setItem(NOTICE_KEY, lockNotice);
+        } catch {
+          // ignore
+        }
+        setRevocationNotice(lockNotice);
+        setIsLoading(false);
+        return;
+      }
+    }
+
     checkSession(token).finally(() => {
       setIsLoading(false);
     });
@@ -201,72 +222,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // -------------------------------------------------------------
   // 5-Minute Inactivity Auto-Logout Tracker (Activity Timestamp Architecture)
-  // Automatically logs user out and locks account only after 5 minutes of uninterrupted zero interaction
+  // Automatically logs user out and locks account after 5 minutes of uninterrupted zero interaction
   // -------------------------------------------------------------
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Reset interaction timestamp immediately upon authentication
-    lastActivityTimestampRef.current = Date.now();
+    // Reset interaction timestamp in memory and localStorage immediately upon authentication
+    const now = Date.now();
+    lastActivityTimestampRef.current = now;
+    try {
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+    } catch {
+      // ignore
+    }
 
-    const onUserActivity = () => {
-      lastActivityTimestampRef.current = Date.now();
-    };
+    const triggerInactivityLogout = async () => {
+      const lockNotice =
+        'Account Locked: You have been automatically logged out due to 5 minutes of inactivity for portfolio security.';
 
-    const activityEvents = [
-      'mousemove',
-      'mousedown',
-      'keydown',
-      'touchstart',
-      'scroll',
-      'click',
-      'wheel',
-      'visibilitychange',
-    ];
-
-    activityEvents.forEach((ev) => {
-      window.addEventListener(ev, onUserActivity, { passive: true });
-    });
-
-    // Check idle duration every 15 seconds
-    const intervalId = setInterval(async () => {
-      const elapsed = Date.now() - lastActivityTimestampRef.current;
-      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
-        const lockNotice =
-          'Account Locked: You have been automatically logged out due to 5 minutes of inactivity for portfolio security.';
-
-        const currentToken = localStorage.getItem(TOKEN_KEY);
-        if (currentToken) {
-          try {
-            await fetch('/api/auth/logout', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${currentToken}` },
-            });
-          } catch {
-            // ignore
-          }
-        }
-
-        localStorage.removeItem(TOKEN_KEY);
+      const currentToken = localStorage.getItem(TOKEN_KEY);
+      if (currentToken) {
         try {
-          sessionStorage.setItem(NOTICE_KEY, lockNotice);
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${currentToken}` },
+          });
         } catch {
           // ignore
         }
-
-        setUser(null);
-        setSessionId(null);
-        setIsMaster(false);
-        setIsAuthenticated(false);
-        setRevocationNotice(lockNotice);
       }
-    }, 15000);
+
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      try {
+        sessionStorage.setItem(NOTICE_KEY, lockNotice);
+      } catch {
+        // ignore
+      }
+
+      setUser(null);
+      setSessionId(null);
+      setIsMaster(false);
+      setIsAuthenticated(false);
+      setRevocationNotice(lockNotice);
+    };
+
+    const checkInactivity = () => {
+      const savedStr = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const lastActive = savedStr ? parseInt(savedStr, 10) : lastActivityTimestampRef.current;
+      const effectiveLastActive = isNaN(lastActive) ? lastActivityTimestampRef.current : lastActive;
+      const elapsed = Date.now() - effectiveLastActive;
+      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+        triggerInactivityLogout();
+      }
+    };
+
+    // User interaction updates the last activity timestamp
+    let lastWriteTime = 0;
+    const onUserActivity = () => {
+      const current = Date.now();
+      lastActivityTimestampRef.current = current;
+      // Throttle localStorage writes to once every 3 seconds
+      if (current - lastWriteTime > 3000) {
+        lastWriteTime = current;
+        try {
+          localStorage.setItem(LAST_ACTIVITY_KEY, String(current));
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    // Actual user inputs (note: NOT visibilitychange, so tab wake-up does NOT falsely count as activity)
+    const userEvents = ['mousedown', 'keydown', 'touchstart', 'click', 'scroll'];
+    userEvents.forEach((ev) => {
+      window.addEventListener(ev, onUserActivity, { passive: true });
+    });
+
+    // Check every 3 seconds
+    const intervalId = setInterval(checkInactivity, 3000);
+
+    // When tab becomes visible or gains focus again, IMMEDIATELY check if 5 minutes elapsed while away
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkInactivity();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+    window.addEventListener('focus', onVisibilityOrFocus);
 
     return () => {
       clearInterval(intervalId);
-      activityEvents.forEach((ev) => {
+      userEvents.forEach((ev) => {
         window.removeEventListener(ev, onUserActivity);
       });
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+      window.removeEventListener('focus', onVisibilityOrFocus);
     };
   }, [isAuthenticated]);
 
@@ -299,6 +351,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       clearRevocationNotice();
 
       lastActivityTimestampRef.current = Date.now();
@@ -333,6 +386,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       clearRevocationNotice();
 
       lastActivityTimestampRef.current = Date.now();
@@ -385,6 +439,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
     setUser(null);
     setSessionId(null);
     setIsMaster(false);
