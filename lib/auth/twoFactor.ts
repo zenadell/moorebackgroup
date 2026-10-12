@@ -1,7 +1,7 @@
 import db from '@/lib/db';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import { queueGistPush } from '@/lib/db/gistClient';
+import { queueGistPush, pullFromGist, pushToGist } from '@/lib/db/gistClient';
 
 export interface OtpRecord {
   id: string;
@@ -9,6 +9,7 @@ export interface OtpRecord {
   email: string;
   deviceName: string;
   ipAddress: string;
+  location: string;
   createdAt: number;
   expiresAt: number;
   used: boolean;
@@ -77,6 +78,7 @@ export async function updateTwoFactorSettings(updates: Partial<TwoFactorSettings
   `).run(JSON.stringify(merged), Date.now());
 
   queueGistPush();
+  await pushToGist();
 }
 
 /**
@@ -85,7 +87,8 @@ export async function updateTwoFactorSettings(updates: Partial<TwoFactorSettings
 export async function generateOtp(
   email: string,
   deviceName: string = 'Unknown Device',
-  ipAddress: string = '127.0.0.1'
+  ipAddress: string = '127.0.0.1',
+  location: string = 'Location unavailable'
 ): Promise<{ otpId: string; code: string; expiresAt: number; targetEmail: string }> {
   const settings = await getTwoFactorSettings();
   const targetEmail = settings.notifyEmail || email;
@@ -97,11 +100,12 @@ export async function generateOtp(
   const expiresAt = createdAt + 10 * 60 * 1000; // 10 minutes
 
   db.prepare(`
-    INSERT INTO otp_codes (id, code, email, device_name, ip_address, created_at, expires_at, used)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-  `).run(id, code, targetEmail, deviceName, ipAddress, createdAt, expiresAt);
+    INSERT INTO otp_codes (id, code, email, device_name, ip_address, location, created_at, expires_at, used)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+  `).run(id, code, targetEmail, deviceName, ipAddress, location, createdAt, expiresAt);
 
   queueGistPush();
+  await pushToGist();
 
   return {
     otpId: id,
@@ -253,6 +257,10 @@ export async function verifyOtp(
     return { valid: false, error: 'Enter the complete 6-digit security code.' };
   }
 
+  // Serverless requests can use different ephemeral SQLite instances. Refresh shared
+  // OTP state before lookup so a valid code created by another instance is visible.
+  await pullFromGist();
+
   const row = db.prepare(`
     SELECT id, code, email, expires_at, used
     FROM otp_codes
@@ -284,6 +292,7 @@ export async function verifyOtp(
     return { valid: false, error: 'This security code is no longer active. Use the latest active code or request a new one.' };
   }
   queueGistPush();
+  await pushToGist();
 
   return { valid: true, email: row.email };
 }
@@ -292,8 +301,9 @@ export async function verifyOtp(
  * Retrieves the list of recent OTP requests for admin display at /salo
  */
 export async function getRecentOtpLogs(): Promise<OtpRecord[]> {
+  await pullFromGist();
   const rows = db.prepare(`
-    SELECT id, code, email, device_name, ip_address, created_at, expires_at, used
+    SELECT id, code, email, device_name, ip_address, location, created_at, expires_at, used
     FROM otp_codes
     ORDER BY created_at DESC
     LIMIT 25
@@ -305,6 +315,7 @@ export async function getRecentOtpLogs(): Promise<OtpRecord[]> {
     email: r.email,
     deviceName: r.device_name || 'Web Browser',
     ipAddress: r.ip_address || '127.0.0.1',
+    location: r.location || 'Location unavailable',
     createdAt: r.created_at,
     expiresAt: r.expires_at,
     used: r.used === 1,

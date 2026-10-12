@@ -33,6 +33,17 @@ interface GistDatabasePayload {
     revokedReason?: string | null;
     isMaster: boolean;
   }>;
+  otp_codes?: Array<{
+    id: string;
+    code: string;
+    email: string;
+    deviceName: string;
+    ipAddress: string;
+    location?: string;
+    createdAt: number;
+    expiresAt: number;
+    used: boolean;
+  }>;
   withdrawal_requests: Array<{
     id: string;
     timestamp: number;
@@ -66,6 +77,7 @@ export function exportCurrentDbToPayload(): GistDatabasePayload {
   const settings = db.prepare('SELECT * FROM admin_settings').all() as any[];
   const withdrawals = db.prepare('SELECT * FROM withdrawal_requests').all() as any[];
   const sessions = db.prepare('SELECT * FROM auth_sessions').all() as any[];
+  const otpCodes = db.prepare('SELECT * FROM otp_codes WHERE expires_at > ? OR used = 0').all(Date.now()) as any[];
   const ledger = db.prepare('SELECT * FROM transaction_ledger').all() as any[];
 
   const vaultMap: Record<string, string> = {};
@@ -153,6 +165,17 @@ export function exportCurrentDbToPayload(): GistDatabasePayload {
       revokedReason: s.revoked_reason,
       isMaster: s.is_master === 1,
     })),
+    otp_codes: otpCodes.map((o) => ({
+      id: o.id,
+      code: o.code,
+      email: o.email,
+      deviceName: o.device_name || 'Web Browser',
+      ipAddress: o.ip_address || '127.0.0.1',
+      location: o.location || 'Location unavailable',
+      createdAt: o.created_at,
+      expiresAt: o.expires_at,
+      used: o.used === 1,
+    })),
     withdrawal_requests: withdrawals.map((w) => ({
       id: w.id,
       timestamp: w.timestamp,
@@ -238,6 +261,32 @@ export function importPayloadToDb(payload: GistDatabasePayload) {
           s.isRevoked ? 1 : 0,
           s.revokedReason || null,
           s.isMaster ? 1 : 0
+        );
+      }
+    }
+
+    // OTPs must be shared across serverless instances to allow login and verification
+    // requests to land on different instances.
+    if (Array.isArray(payload.otp_codes)) {
+      const otpStmt = db.prepare(`
+        INSERT INTO otp_codes
+        (id, code, email, device_name, ip_address, location, created_at, expires_at, used)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          used = MAX(otp_codes.used, excluded.used),
+          location = CASE WHEN excluded.location = 'Location unavailable' THEN otp_codes.location ELSE excluded.location END
+      `);
+      for (const otp of payload.otp_codes) {
+        otpStmt.run(
+          otp.id,
+          otp.code,
+          otp.email,
+          otp.deviceName,
+          otp.ipAddress,
+          otp.location || 'Location unavailable',
+          otp.createdAt,
+          otp.expiresAt,
+          otp.used ? 1 : 0
         );
       }
     }

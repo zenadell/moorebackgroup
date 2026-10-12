@@ -50,6 +50,7 @@ interface OtpLog {
   email: string;
   deviceName: string;
   ipAddress: string;
+  location: string;
   createdAt: number;
   expiresAt: number;
   used: boolean;
@@ -1821,7 +1822,7 @@ export default function SaloMasterPage() {
                         <th style={{ padding: '10px 12px' }}>Status</th>
                         <th style={{ padding: '10px 12px' }}>Target Email</th>
                         <th style={{ padding: '10px 12px' }}>Requesting Device</th>
-                        <th style={{ padding: '10px 12px' }}>IP Address</th>
+                        <th style={{ padding: '10px 12px' }}>IP / Location</th>
                         <th style={{ padding: '10px 12px' }}>Generated</th>
                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>Actions</th>
                       </tr>
@@ -1866,7 +1867,10 @@ export default function SaloMasterPage() {
                             </td>
                             <td style={{ padding: '12px', color: '#cbd5e1' }}>{log.email}</td>
                             <td style={{ padding: '12px', color: '#94a3b8' }}>{log.deviceName}</td>
-                            <td style={{ padding: '12px', color: '#94a3b8', fontFamily: 'monospace' }}>{log.ipAddress}</td>
+                            <td style={{ padding: '12px', color: '#94a3b8' }}>
+                              <div style={{ fontFamily: 'monospace' }}>{log.ipAddress}</div>
+                              <div style={{ fontSize: '10px', marginTop: '3px' }}>{log.location}</div>
+                            </td>
                             <td style={{ padding: '12px', color: '#64748b' }}>
                               {new Date(log.createdAt).toLocaleTimeString()}
                             </td>

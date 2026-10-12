@@ -31,6 +31,7 @@ function DashboardContent() {
   const [marketStatus, setMarketStatus] = useState<{ status: string; label: string; lastTradeDate: string } | null>(null);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const portfolioTotal = holdings.reduce((sum, holding) => sum + holding.totalValue, 0);
 
   // Sync live stock quotes from Alpaca & Finnhub via /api/stocks/quotes
   useEffect(() => {
@@ -47,8 +48,7 @@ function DashboardContent() {
               const live = data.quotes[h.ticker];
               if (!live) return h;
               const livePrice = Number(live.price);
-              const shares = Math.max(1, Math.round(h.totalValue / livePrice));
-              const recalculatedValue = Number((shares * livePrice).toFixed(2));
+              const recalculatedValue = Number((h.shares * livePrice).toFixed(2));
 
               return {
                 ...h,
@@ -57,20 +57,16 @@ function DashboardContent() {
                 changePercent: Number(live.changePercent),
                 prePostPrice: live.prePostPrice ?? h.prePostPrice,
                 prePostChange: live.prePostChange ?? h.prePostChange,
-                shares: shares,
                 totalValue: recalculatedValue,
               };
             });
 
-            // Maintain exact 100% allocation into equities with zero liquid cash remainder
             const currentTotal = updated.reduce((sum, h) => sum + h.totalValue, 0);
-            const delta = Number((120570000 - currentTotal).toFixed(2));
-            if (delta !== 0 && updated.length > 0) {
-              updated[0] = {
-                ...updated[0],
-                totalValue: Number((updated[0].totalValue + delta).toFixed(2)),
-              };
-            }
+            updated.forEach((holding) => {
+              holding.weight = currentTotal > 0
+                ? Number(((holding.totalValue / currentTotal) * 100).toFixed(2))
+                : 0;
+            });
             return updated;
           });
           setIsLiveActive(true);
@@ -177,7 +173,7 @@ function DashboardContent() {
                     Overview
                   </h1>
                   <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>
-                    Declan Salo Private Portfolio • Total Balance $120.57M
+                    Declan Salo Private Portfolio • Total Balance ${(portfolioTotal / 1_000_000).toFixed(2)}M
                   </p>
                 </div>
 
@@ -232,7 +228,7 @@ function DashboardContent() {
               </div>
 
               {/* 4 Stat Cards Row */}
-              <StatCards summary={PORTFOLIO_SUMMARY} />
+              <StatCards summary={{ ...PORTFOLIO_SUMMARY, totalBalance: portfolioTotal }} />
 
               {/* 3 Middle Visualization Cards Row */}
               <div className="charts-grid">
@@ -387,7 +383,7 @@ function DashboardContent() {
           )}
 
           {currentTab === 'beneficiary' && (
-            <BeneficiaryView totalBalance={120570000} />
+            <BeneficiaryView totalBalance={portfolioTotal} />
           )}
 
           {currentTab === 'settings' && (

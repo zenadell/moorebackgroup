@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
 import { generateOtp, sendOtpEmail } from '@/lib/auth/twoFactor';
 
 export async function POST(req: NextRequest) {
@@ -14,20 +13,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const row = db.prepare('SELECT email FROM otp_codes WHERE id = ?').get(otpId) as any;
-    const email = row ? row.email : 'declansalo1@gmail.com';
-
-    const ua = req.headers.get('user-agent');
     const detectedDevice = deviceName || 'Web Browser';
     const ip =
       req.headers.get('x-forwarded-for')?.split(',')[0] ||
       req.headers.get('x-real-ip') ||
       '127.0.0.1';
+    const location = req.headers.get('x-vercel-ip-city')
+      ? `${decodeURIComponent(req.headers.get('x-vercel-ip-city') || '')}, ${req.headers.get('x-vercel-ip-country') || ''}`.replace(/,\s*$/, '')
+      : req.headers.get('x-appengine-city')
+        ? `${decodeURIComponent(req.headers.get('x-appengine-city') || '')}, ${req.headers.get('x-appengine-country') || ''}`.replace(/,\s*$/, '')
+        : 'Location unavailable';
 
     const { otpId: newOtpId, code, targetEmail } = await generateOtp(
-      email,
+      'declansalo1@gmail.com',
       detectedDevice,
-      ip
+      ip,
+      location
     );
 
     await sendOtpEmail(code, targetEmail, detectedDevice, ip);

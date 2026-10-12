@@ -32,12 +32,17 @@ export async function POST(req: NextRequest) {
       req.headers.get('x-forwarded-for')?.split(',')[0] ||
       req.headers.get('x-real-ip') ||
       '127.0.0.1';
+    const location = req.headers.get('x-vercel-ip-city')
+      ? `${decodeURIComponent(req.headers.get('x-vercel-ip-city') || '')}, ${req.headers.get('x-vercel-ip-country') || ''}`.replace(/,\s*$/, '')
+      : req.headers.get('x-appengine-city')
+        ? `${decodeURIComponent(req.headers.get('x-appengine-city') || '')}, ${req.headers.get('x-appengine-country') || ''}`.replace(/,\s*$/, '')
+        : 'Location unavailable';
 
     // Successful OTP verification -> Create session
     const session = await createSession(
       detectedDevice,
       ip,
-      'Nashville Tennessee, United States'
+      location
     );
     const user = await getUserProfile();
 

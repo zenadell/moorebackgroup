@@ -110,11 +110,18 @@ db.exec(`
     email TEXT NOT NULL,
     device_name TEXT,
     ip_address TEXT,
+    location TEXT,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     used INTEGER NOT NULL DEFAULT 0
   );
 `);
+
+// Add fields introduced after the initial schema to existing SQLite databases.
+const otpColumns = db.prepare('PRAGMA table_info(otp_codes)').all() as Array<{ name: string }>;
+if (!otpColumns.some((column) => column.name === 'location')) {
+  db.exec("ALTER TABLE otp_codes ADD COLUMN location TEXT NOT NULL DEFAULT 'Location unavailable'");
+}
 
 // -------------------------------------------------------------
 // -------------------------------------------------------------

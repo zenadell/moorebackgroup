@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ArrowUpRight } from 'lucide-react';
 import { PortfolioSummary } from '@/types';
 
 interface StatCardsProps {
@@ -13,7 +12,7 @@ export function StatCards({ summary }: StatCardsProps) {
 
   return (
     <div className="stat-cards-grid">
-      {/* Card 1: Total Revenue / Total Balance (Hard-locked $120.57 Million) */}
+      {/* Card 1: live total value of the share portfolio */}
       <div className="kpi-card">
         <p style={{ fontSize: '13px', fontWeight: 500, color: '#64748b', margin: 0 }}>
           Total Revenue
@@ -39,7 +38,7 @@ export function StatCards({ summary }: StatCardsProps) {
             {showFullNumber ? (
               <span>${summary.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             ) : (
-              <span>$120.57M</span>
+              <span>${(summary.totalBalance / 1_000_000).toFixed(2)}M</span>
             )}
           </button>
         </div>
