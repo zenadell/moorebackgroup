@@ -19,9 +19,10 @@ import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, RECENT_TRANSACTIONS } from '@/lib/
 import { StockHolding } from '@/types';
 import { ArrowDownLeft, ArrowUpRight, Coins } from 'lucide-react';
 import { ModernTopBar, OrbitalLoader } from '@/components/ui/ModernLoader';
+import { ScreenSecurityShield } from '@/components/security/ScreenSecurityShield';
 
 function DashboardContent() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -106,13 +107,19 @@ function DashboardContent() {
     );
   }
 
-  // If not authenticated, show user login
+  // If not authenticated, show user login with security shield
   if (!isAuthenticated) {
-    return <LoginForm />;
+    return (
+      <>
+        <ScreenSecurityShield principalName="Institutional Principal" covenantId="MBG-88429-PRI" />
+        <LoginForm />
+      </>
+    );
   }
 
   return (
     <div
+      className="secure-financial-vault"
       style={{
         minHeight: '100vh',
         backgroundColor: '#f1f4f9',
@@ -121,6 +128,12 @@ function DashboardContent() {
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
+      {/* Institutional Anti-Screenshot & Screen Capture Shield */}
+      <ScreenSecurityShield
+        principalName={user?.name || 'Declan Salo'}
+        covenantId="MBG-88429-PRI"
+      />
+
       {/* Top Header */}
       <Header
         searchQuery={searchQuery}

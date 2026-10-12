@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { Search, Bell, ChevronDown, LogOut, Settings as SettingsIcon, CheckCircle2, Menu, ArrowDownLeft, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
 
 interface HeaderProps {
@@ -233,6 +233,28 @@ export function Header({
               <span>Withdraw</span>
             </button>
           )}
+        </div>
+
+        {/* Level 4 Anti-Capture Security Indicator */}
+        <div
+          className="hidden xl:flex items-center"
+          title="Institutional Anti-Screenshot & Screen Recording Protection Enforced"
+          style={{
+            alignItems: 'center',
+            gap: '5px',
+            padding: '5px 10px',
+            borderRadius: '9999px',
+            backgroundColor: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            color: '#15803d',
+            fontSize: '11px',
+            fontWeight: 600,
+            cursor: 'default',
+            userSelect: 'none',
+          }}
+        >
+          <ShieldCheck style={{ width: '13px', height: '13px', color: '#16a34a' }} />
+          <span>Anti-Capture Active</span>
         </div>
 
         {/* Presentation Mode Pill (Matches "Presented ▾" in Image 1) */}

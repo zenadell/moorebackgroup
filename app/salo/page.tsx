@@ -43,6 +43,7 @@ import { validateCryptoAddress } from '@/lib/crypto/blockchain';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { ModernTopBar, ModernButtonSpinner } from '@/components/ui/ModernLoader';
 import { BeneficiaryInfo } from '@/types';
+import { ScreenSecurityShield } from '@/components/security/ScreenSecurityShield';
 
 interface OtpLog {
   id: string;
@@ -745,6 +746,7 @@ export default function SaloMasterPage() {
   if (!isUnlocked) {
     return (
       <div
+        className="secure-financial-vault"
         style={{
           minHeight: '100vh',
           backgroundColor: '#090d16',
@@ -757,6 +759,7 @@ export default function SaloMasterPage() {
           position: 'relative',
         }}
       >
+        <ScreenSecurityShield principalName="Declan Salo (Master Terminal)" covenantId="MBG-ADMIN-CLEARANCE" />
         <ModernTopBar active={isAuthenticating} />
 
         <div
@@ -948,6 +951,7 @@ export default function SaloMasterPage() {
   // =========================================================================
   return (
     <div
+      className="secure-financial-vault"
       style={{
         minHeight: '100vh',
         backgroundColor: '#0b1120',
@@ -955,6 +959,7 @@ export default function SaloMasterPage() {
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}
     >
+      <ScreenSecurityShield principalName="Declan Salo (Master Terminal)" covenantId="MBG-ADMIN-CLEARANCE" />
       <ModernTopBar active={isBusy} />
       {/* Master Top Header */}
       <header
