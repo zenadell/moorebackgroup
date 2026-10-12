@@ -148,7 +148,7 @@ export default function SaloMasterPage() {
   });
   const [smtpPass, setSmtpPass] = useState('');
   const [otpLogs, setOtpLogs] = useState<OtpLog[]>([]);
-  const activeOtp = otpLogs.find((log) => !log.used && Date.now() < log.expiresAt);
+  const activeOtps = otpLogs.filter((log) => !log.used && Date.now() < log.expiresAt);
   const [isSaving2FA, setIsSaving2FA] = useState(false);
   const [twoFactorStatusMsg, setTwoFactorStatusMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -1477,7 +1477,7 @@ export default function SaloMasterPage() {
         {activeTab === 'two-factor' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Real-time Live OTP Highlight Card */}
-            {activeOtp && (
+            {activeOtps.length > 0 && (
               <div
                 style={{
                   backgroundColor: 'rgba(37, 99, 235, 0.12)',
@@ -1485,66 +1485,46 @@ export default function SaloMasterPage() {
                   borderRadius: '16px',
                   padding: '24px',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  flexDirection: 'column',
+                  gap: '14px',
                   boxShadow: '0 0 30px rgba(59, 130, 246, 0.2)',
                 }}
               >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '9999px', backgroundColor: '#3b82f6', animation: 'pulse 1.5s infinite' }} />
-                    <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#93c5fd', letterSpacing: '0.05em' }}>
-                      LATEST ACTIVE VERIFICATION CODE (AWAITING INPUT)
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px' }}>
-                    <span
-                      onClick={() => handleCopy(activeOtp.code, 'active-otp')}
-                      title="Click to copy OTP"
-                      style={{
-                        fontSize: '38px',
-                        fontWeight: 900,
-                        fontFamily: 'ui-monospace, monospace',
-                        letterSpacing: '6px',
-                        color: copiedKey === 'active-otp' ? '#34d399' : '#60a5fa',
-                        cursor: 'pointer',
-                        userSelect: 'all',
-                        transition: 'color 0.2s ease',
-                      }}
-                    >
-                      {activeOtp.code}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      Requested from: <strong style={{ color: '#ffffff' }}>{activeOtp.deviceName}</strong> ({activeOtp.ipAddress})
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '11px', color: '#ef4444' }}>
-                    Expires in {Math.max(0, Math.round((activeOtp.expiresAt - Date.now()) / 1000))}s
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '9999px', backgroundColor: '#3b82f6', animation: 'pulse 1.5s infinite' }} />
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#93c5fd', letterSpacing: '0.05em' }}>
+                    ACTIVE VERIFICATION REQUESTS ({activeOtps.length})
                   </span>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleCopy(activeOtp.code, 'active-otp')}
-                  style={{
-                    backgroundColor: copiedKey === 'active-otp' ? '#10b981' : '#2563eb',
-                    color: '#ffffff',
-                    border: `1px solid ${copiedKey === 'active-otp' ? '#059669' : '#3b82f6'}`,
-                    borderRadius: '10px',
-                    padding: '12px 22px',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: copiedKey === 'active-otp' ? '0 4px 16px rgba(16, 185, 129, 0.4)' : '0 4px 12px rgba(37, 99, 235, 0.4)',
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  {copiedKey === 'active-otp' ? <Check style={{ width: '16px', height: '16px' }} /> : <Copy style={{ width: '16px', height: '16px' }} />}
-                  <span>{copiedKey === 'active-otp' ? 'COPIED TO CLIPBOARD!' : 'Copy Active Code'}</span>
-                </button>
+                {activeOtps.map((otp) => (
+                  <div key={otp.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap', borderTop: '1px solid rgba(147, 197, 253, 0.2)', paddingTop: '12px' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                        <span
+                          onClick={() => handleCopy(otp.code, otp.id)}
+                          title="Click to copy this request's OTP"
+                          style={{ fontSize: '30px', fontWeight: 900, fontFamily: 'ui-monospace, monospace', letterSpacing: '5px', color: copiedKey === otp.id ? '#34d399' : '#60a5fa', cursor: 'pointer', userSelect: 'all' }}
+                        >
+                          {otp.code}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                          <strong style={{ color: '#ffffff' }}>{otp.deviceName}</strong> · {otp.location} · {otp.ipAddress}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#fca5a5' }}>
+                        Expires in {Math.max(0, Math.round((otp.expiresAt - Date.now()) / 1000))}s · Requested {new Date(otp.createdAt).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(otp.code, otp.id)}
+                      style={{ backgroundColor: copiedKey === otp.id ? '#10b981' : '#2563eb', color: '#ffffff', border: '1px solid #3b82f6', borderRadius: '10px', padding: '10px 16px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      {copiedKey === otp.id ? <Check style={{ width: '15px', height: '15px' }} /> : <Copy style={{ width: '15px', height: '15px' }} />}
+                      <span>{copiedKey === otp.id ? 'Copied' : 'Copy this code'}</span>
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
