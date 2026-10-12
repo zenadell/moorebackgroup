@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { ShieldAlert, Lock, EyeOff, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Lock, EyeOff, AlertTriangle, Eye, ShieldCheck } from 'lucide-react';
 
 interface ScreenSecurityShieldProps {
   principalName?: string;
@@ -15,6 +15,7 @@ export function ScreenSecurityShield({
   enabled = true,
 }: ScreenSecurityShieldProps) {
   const [isObfuscated, setIsObfuscated] = useState<boolean>(false);
+  const [isConcealMode, setIsConcealMode] = useState<boolean>(false);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [liveTimestamp, setLiveTimestamp] = useState<string>('');
   const alertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -32,6 +33,15 @@ export function ScreenSecurityShield({
     return () => clearInterval(timer);
   }, []);
 
+  // Sync Conceal Mode class to body
+  useEffect(() => {
+    if (isConcealMode) {
+      document.body.classList.add('privacy-conceal-active');
+    } else {
+      document.body.classList.remove('privacy-conceal-active');
+    }
+  }, [isConcealMode]);
+
   const triggerSecurityAlert = useCallback((msg: string) => {
     setAlertNotice(msg);
     setIsObfuscated(true);
@@ -39,20 +49,18 @@ export function ScreenSecurityShield({
     alertTimeoutRef.current = setTimeout(() => {
       setAlertNotice(null);
       setIsObfuscated(false);
-    }, 4000);
+    }, 4500);
   }, []);
 
   useEffect(() => {
     if (!enabled) return;
 
     // 1. Focus Loss & Window Blur Protection
-    // When screenshot tool (Snipping Tool, CleanShot, Mac Cmd+Shift+4) or external app takes focus:
     const handleBlur = () => {
       setIsObfuscated(true);
     };
 
     const handleFocus = () => {
-      // Only clear if not in an active hotkey violation alert
       if (!alertNotice) {
         setIsObfuscated(false);
       }
@@ -68,7 +76,25 @@ export function ScreenSecurityShield({
       }
     };
 
-    // 2. Keyboard Screenshot & Extraction Interception
+    // 2. Cursor Departure Protection (Triggers on Snipping Tool / Menu Exit)
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (
+        e.clientY <= 0 ||
+        e.clientX <= 0 ||
+        e.clientX >= window.innerWidth ||
+        e.clientY >= window.innerHeight
+      ) {
+        setIsObfuscated(true);
+      }
+    };
+
+    const handleMouseEnter = () => {
+      if (!alertNotice) {
+        setIsObfuscated(false);
+      }
+    };
+
+    // 3. Keyboard Shortcut Interception
     const handleKeyDown = (e: KeyboardEvent) => {
       // PrintScreen (Windows)
       if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
@@ -82,11 +108,15 @@ export function ScreenSecurityShield({
       }
 
       // Mac screenshot combinations (Cmd+Shift+3, Cmd+Shift+4, Cmd+Shift+5)
-      // Note: OS handles Cmd+Shift, but browser catches keydown first or loses focus
       if (
         (e.metaKey || e.ctrlKey) &&
         e.shiftKey &&
-        (e.key === '3' || e.key === '4' || e.key === '5' || e.code === 'Digit3' || e.code === 'Digit4' || e.code === 'Digit5')
+        (e.key === '3' ||
+          e.key === '4' ||
+          e.key === '5' ||
+          e.code === 'Digit3' ||
+          e.code === 'Digit4' ||
+          e.code === 'Digit5')
       ) {
         e.preventDefault();
         e.stopPropagation();
@@ -131,7 +161,12 @@ export function ScreenSecurityShield({
         e.key === 'F12' ||
         ((e.metaKey || e.ctrlKey) &&
           e.shiftKey &&
-          (e.key === 'i' || e.key === 'I' || e.key === 'c' || e.key === 'C' || e.key === 'j' || e.key === 'J'))
+          (e.key === 'i' ||
+            e.key === 'I' ||
+            e.key === 'c' ||
+            e.key === 'C' ||
+            e.key === 'j' ||
+            e.key === 'J'))
       ) {
         e.preventDefault();
         e.stopPropagation();
@@ -148,15 +183,14 @@ export function ScreenSecurityShield({
       }
     };
 
-    // 3. Right Click (Context Menu) Prevention
+    // 4. Right Click (Context Menu) Prevention
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       triggerSecurityAlert('Context menu and image extraction restricted.');
     };
 
-    // 4. Copy Event Hook (Clears financial numbers if copied)
+    // 5. Copy Event Hook
     const handleCopy = (e: ClipboardEvent) => {
-      // Allow internal form field copying if typing, else restrict
       const activeEl = document.activeElement;
       const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
       if (!isInput) {
@@ -168,6 +202,8 @@ export function ScreenSecurityShield({
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('mouseleave', handleMouseLeave);
+    document.addEventListener('mouseenter', handleMouseEnter);
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('copy', handleCopy);
@@ -176,6 +212,8 @@ export function ScreenSecurityShield({
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+      document.removeEventListener('mouseenter', handleMouseEnter);
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('copy', handleCopy);
@@ -187,37 +225,58 @@ export function ScreenSecurityShield({
 
   return (
     <>
-      {/* 1. Dynamic Diagonal Forensic Watermark (Invisible to casual reading, captures on external camera/phone photos) */}
+      {/* 1. Global CSS for Conceal Mode (Hides numbers unless hovered) */}
+      <style jsx global>{`
+        body.privacy-conceal-active .kpi-value,
+        body.privacy-conceal-active .kpi-card span,
+        body.privacy-conceal-active td,
+        body.privacy-conceal-active .recharts-surface,
+        body.privacy-conceal-active .stat-cards-grid {
+          filter: blur(10px) !important;
+          transition: filter 0.2s ease !important;
+          user-select: none !important;
+        }
+
+        body.privacy-conceal-active .kpi-card:hover .kpi-value,
+        body.privacy-conceal-active .kpi-card:hover span,
+        body.privacy-conceal-active tr:hover td,
+        body.privacy-conceal-active .recharts-surface:hover {
+          filter: blur(0px) !important;
+        }
+      `}</style>
+
+      {/* 2. High-Visibility Forensic Watermark Layer */}
       <div
         aria-hidden="true"
         style={{
           position: 'fixed',
           inset: 0,
           pointerEvents: 'none',
-          zIndex: 40,
+          zIndex: 35,
           overflow: 'hidden',
-          opacity: 0.045,
+          opacity: 0.12,
           userSelect: 'none',
           display: 'flex',
           flexWrap: 'wrap',
           alignContent: 'space-around',
           justifyContent: 'space-around',
-          transform: 'rotate(-22deg) scale(1.3)',
+          transform: 'rotate(-20deg) scale(1.4)',
           transformOrigin: 'center center',
         }}
       >
-        {Array.from({ length: 35 }).map((_, idx) => (
+        {Array.from({ length: 40 }).map((_, idx) => (
           <div
             key={idx}
             style={{
-              padding: '24px 32px',
-              fontSize: '11px',
+              padding: '28px 36px',
+              fontSize: '12px',
               fontFamily: 'monospace',
-              fontWeight: 700,
+              fontWeight: 800,
               color: '#0f172a',
-              letterSpacing: '0.12em',
+              letterSpacing: '0.14em',
               textTransform: 'uppercase',
               whiteSpace: 'nowrap',
+              textShadow: '0 0 1px rgba(0,0,0,0.2)',
             }}
           >
             MOOREBACH GROUP • {principalName} • {covenantId} • {liveTimestamp} • CONFIDENTIAL
@@ -225,8 +284,53 @@ export function ScreenSecurityShield({
         ))}
       </div>
 
-      {/* 2. Instant Anti-Capture Obfuscation Screen Shield */}
-      {/* Triggers instantly when user pulls focus away (Snipping Tool, Cmd+Shift+4, screen recording hooks, tab switch) */}
+      {/* 3. Floating Quick Conceal / Privacy Mode Control (Bottom Right) */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          zIndex: 45,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setIsConcealMode(!isConcealMode)}
+          title={isConcealMode ? 'Conceal Mode Active (Values Blurred Until Hovered). Click to Reveal All.' : 'Click to Mask All Balances (Anti-Screenshot Mode)'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '7px',
+            padding: '8px 14px',
+            borderRadius: '9999px',
+            backgroundColor: isConcealMode ? '#0f172a' : '#ffffff',
+            color: isConcealMode ? '#38bdf8' : '#334155',
+            border: isConcealMode ? '1px solid #38bdf8' : '1px solid #cbd5e1',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.12)',
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          {isConcealMode ? (
+            <>
+              <EyeOff style={{ width: '14px', height: '14px', color: '#38bdf8' }} />
+              <span>Balances Masked (Hover to Peek)</span>
+            </>
+          ) : (
+            <>
+              <Eye style={{ width: '14px', height: '14px', color: '#64748b' }} />
+              <span>Conceal Balances</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* 4. Instant Anti-Capture Obfuscation Screen Shield (Focus Loss & Mouse Out) */}
       {isObfuscated && (
         <div
           onClick={() => {
@@ -378,7 +482,7 @@ export function ScreenSecurityShield({
         </div>
       )}
 
-      {/* 3. Floating Security Alert Toast (For instant feedback on hotkey attempt) */}
+      {/* 5. Floating Security Alert Toast */}
       {alertNotice && !isObfuscated && (
         <div
           style={{
