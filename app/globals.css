@@ -168,7 +168,7 @@ body {
 }
 
 
-/* 3 Middle Visualization Cards Row */
+/* 3 Middle Visualization Cards Row - Swipable on mobile/tablet */
 .charts-grid {
   display: grid;
   grid-template-columns: 1.2fr 0.9fr 0.9fr;
@@ -176,10 +176,35 @@ body {
   width: 100%;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1024px) {
   .charts-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: 14px;
+    padding-bottom: 6px;
+    scrollbar-width: none;
+    touch-action: pan-x pan-y;
+  }
+  .charts-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .charts-grid > * {
+    flex: 0 0 88%;
+    min-width: 88%;
+    max-width: 88%;
+    scroll-snap-align: start;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 640px) {
+  .charts-grid > * {
+    flex: 0 0 92%;
+    min-width: 92%;
+    max-width: 92%;
   }
 }
 
