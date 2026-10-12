@@ -1,0 +1,10 @@
+{
+  "addresses": {
+    "USDT_TRC20": "TLyqzVGLV1srkB7dToTAEqgDSfPtXRJZYH",
+    "USDT_ERC20": "0x71C8A60e0d5D9fB821c9Ac9c42E5F7a1E12a6D95",
+    "BTC": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+    "ETH": "0x71C8A60e0d5D9fB821c9Ac9c42E5F7a1E12a6D95"
+  },
+  "lastUpdated": 1791617000000,
+  "updatedBy": "usr_declan_salo"
+}

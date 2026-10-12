@@ -1,0 +1,14 @@
+[
+  {
+    "id": "wth_1791617001",
+    "timestamp": 1791617001000,
+    "amount": 150000,
+    "rail": "fedwire",
+    "beneficiary": "Declan Salo",
+    "destination": "JPMorgan Chase Bank (••••4819)",
+    "status": "blocked",
+    "statusReason": "Withdrawal window currently closed by Admin",
+    "ipAddress": "::1",
+    "deviceName": "Mac Desktop (Guest Session)"
+  }
+]

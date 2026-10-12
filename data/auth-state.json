@@ -1,0 +1,38 @@
+{
+  "user": {
+    "id": "usr_declan_salo",
+    "name": "Declan Salo",
+    "email": "declansalo1@gmail.com",
+    "location": "Nashville Tennessee, United States",
+    "role": "Account Owner & Portfolio Principal",
+    "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+  },
+  "passwordHash": "011945738878422fe32216a471cc3e8262f07f8d7f2c54577ad8e2e75b51b0e3",
+  "sessions": [
+    {
+      "id": "sess_1791617034286_151b5ae5",
+      "token": "d282b0a393c8071b1cebcfeb660008b099c1145b32c08df9a8a3f5f7e270bf0f",
+      "userId": "usr_declan_salo",
+      "deviceName": "Mac Desktop",
+      "ipAddress": "::1",
+      "location": "Nashville Tennessee, United States",
+      "createdAt": 1791617034287,
+      "lastActiveAt": 1791617034287,
+      "isRevoked": true,
+      "revokedReason": "Session terminated by account owner (Declan Salo)"
+    },
+    {
+      "id": "sess_1791616963338_9bb2011c",
+      "token": "c98c616bd8e0fb4c99f7bbb6f252cbfcd606e5ef6b4209593053ffc67bf29ebb",
+      "userId": "usr_declan_salo",
+      "deviceName": "Mac Desktop",
+      "ipAddress": "::1",
+      "location": "Nashville Tennessee, United States",
+      "createdAt": 1791616963338,
+      "lastActiveAt": 1791617068975,
+      "isRevoked": false,
+      "isMaster": true
+    }
+  ],
+  "masterSessionId": "sess_1791616963338_9bb2011c"
+}

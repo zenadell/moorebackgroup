@@ -1,5 +1,5 @@
 import db from '@/lib/db';
-import { queueGistPush } from '@/lib/db/gistClient';
+import { queueGistPush, pushToGist } from '@/lib/db/gistClient';
 
 export interface BeneficiaryInfo {
   name: string;
@@ -66,6 +66,7 @@ export async function updateBeneficiaryInfo(updates: Partial<BeneficiaryInfo>): 
   `).run(JSON.stringify(merged), Date.now());
 
   queueGistPush();
+  pushToGist().catch(() => {});
 
   return merged;
 }

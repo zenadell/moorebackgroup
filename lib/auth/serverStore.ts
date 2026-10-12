@@ -1,7 +1,49 @@
 import db from '@/lib/db';
 import crypto from 'crypto';
 import { UserProfile } from '@/types';
-import { queueGistPush } from '@/lib/db/gistClient';
+import { queueGistPush, pushToGist } from '@/lib/db/gistClient';
+
+const TOKEN_SECRET = process.env.JWT_SECRET || process.env.AUTH_SECRET || 'moorebachgroup_inst_clearance_secret_key_88429';
+
+export function signToken(sessionId: string, userId: string, isMaster: boolean, createdAt: number): string {
+  const data = `${sessionId}:${userId}:${isMaster ? 1 : 0}:${createdAt}`;
+  const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(data).digest('hex').substring(0, 32);
+  const encoded = Buffer.from(data).toString('base64url');
+  return `${encoded}.${sig}`;
+}
+
+export function verifySignedToken(token: string): {
+  valid: boolean;
+  sessionId?: string;
+  userId?: string;
+  isMaster?: boolean;
+  createdAt?: number;
+} {
+  try {
+    if (!token || typeof token !== 'string') return { valid: false };
+    const parts = token.split('.');
+    if (parts.length !== 2) return { valid: false };
+    const [encoded, sig] = parts;
+    const data = Buffer.from(encoded, 'base64url').toString('utf-8');
+    const expectedSig = crypto.createHmac('sha256', TOKEN_SECRET).update(data).digest('hex').substring(0, 32);
+    if (sig !== expectedSig) return { valid: false };
+    const [sessionId, userId, isMasterStr, createdAtStr] = data.split(':');
+    const createdAt = parseInt(createdAtStr, 10);
+    // 30 days session validity
+    if (isNaN(createdAt) || Date.now() - createdAt > 30 * 24 * 60 * 60 * 1000) {
+      return { valid: false };
+    }
+    return {
+      valid: true,
+      sessionId,
+      userId,
+      isMaster: isMasterStr === '1',
+      createdAt,
+    };
+  } catch {
+    return { valid: false };
+  }
+}
 
 export interface AuthSession {
   id: string;
@@ -81,6 +123,7 @@ export async function updateUserProfile(profile: {
   `).run(name, email, location, avatarUrl, current.id);
 
   queueGistPush();
+  pushToGist().catch(() => {});
 
   return {
     ...current,
@@ -153,14 +196,15 @@ export async function createSession(
   location: string = 'Nashville Tennessee, United States'
 ): Promise<AuthSession> {
   const user = await getUserProfile();
-  const token = crypto.randomBytes(32).toString('hex');
+  const id = `sess_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
   // Check if there is already an active unrevoked master session
   const activeMaster = db.prepare('SELECT id FROM auth_sessions WHERE is_revoked = 0 AND is_master = 1 LIMIT 1').get();
   const isMaster = !activeMaster;
+  const token = signToken(id, user.id, isMaster, Date.now());
 
   const session: AuthSession = {
-    id: `sess_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    id,
     token,
     userId: user.id,
     deviceName,
@@ -188,7 +232,7 @@ export async function createSession(
     session.isMaster ? 1 : 0
   );
 
-  queueGistPush();
+  pushToGist().catch(() => {});
 
   return session;
 }
@@ -199,10 +243,11 @@ export async function createMasterSession(
   location: string = 'Nashville Tennessee, United States'
 ): Promise<AuthSession> {
   const user = await getUserProfile();
-  const token = crypto.randomBytes(32).toString('hex');
+  const id = `sess_master_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const token = signToken(id, user.id, true, Date.now());
 
   const session: AuthSession = {
-    id: `sess_master_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    id,
     token,
     userId: user.id,
     deviceName,
@@ -229,7 +274,7 @@ export async function createMasterSession(
     session.lastActiveAt
   );
 
-  queueGistPush();
+  pushToGist().catch(() => {});
 
   return session;
 }
@@ -244,14 +289,59 @@ export async function validateSession(token: string): Promise<{
     return { valid: false, reason: 'No session token provided' };
   }
 
-  const row = db.prepare(`
+  // 1. Try finding session in local database
+  let row = db.prepare(`
     SELECT id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, revoked_reason, is_master
     FROM auth_sessions
     WHERE token = ?
   `).get(token) as any;
 
+  // 2. If not found in local SQLite (e.g. fresh Vercel serverless container), verify token cryptographically
   if (!row) {
-    return { valid: false, reason: 'Session not found or expired' };
+    const verified = verifySignedToken(token);
+    if (verified.valid && verified.sessionId) {
+      // Check if session was revoked by ID
+      const revokedCheck = db.prepare('SELECT is_revoked, revoked_reason FROM auth_sessions WHERE id = ?').get(verified.sessionId) as any;
+      if (revokedCheck && revokedCheck.is_revoked === 1) {
+        return {
+          valid: false,
+          reason: revokedCheck.revoked_reason || 'This session has been terminated by Declan Salo',
+        };
+      }
+
+      // Rehydrate this verified session into local SQLite container
+      const user = await getUserProfile();
+      db.prepare(`
+        INSERT OR IGNORE INTO auth_sessions
+        (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `).run(
+        verified.sessionId,
+        token,
+        verified.userId || user.id,
+        'Verified Device',
+        '127.0.0.1',
+        'Nashville Tennessee, United States',
+        verified.createdAt || Date.now(),
+        Date.now(),
+        verified.isMaster ? 1 : 0
+      );
+
+      row = {
+        id: verified.sessionId,
+        token,
+        user_id: verified.userId || user.id,
+        device_name: 'Verified Device',
+        ip_address: '127.0.0.1',
+        location: 'Nashville Tennessee, United States',
+        created_at: verified.createdAt || Date.now(),
+        last_active_at: Date.now(),
+        is_revoked: 0,
+        is_master: verified.isMaster ? 1 : 0,
+      };
+    } else {
+      return { valid: false, reason: 'Session not found or expired' };
+    }
   }
 
   if (row.is_revoked === 1) {

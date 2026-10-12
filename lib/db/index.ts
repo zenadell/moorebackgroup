@@ -117,10 +117,85 @@ db.exec(`
 `);
 
 // -------------------------------------------------------------
-// Seed initial values from existing files if tables are empty
+// -------------------------------------------------------------
+// Seed initial values from bundled gist_seed.json or fallback files
 // -------------------------------------------------------------
 
-// 1. Seed Vault Addresses
+// 0. Synchronously seed from bundled gist_seed.json if present (primary production seed)
+const seedFile = path.join(process.cwd(), 'data', 'gist_seed.json');
+if (fs.existsSync(seedFile)) {
+  try {
+    const rawSeed = fs.readFileSync(seedFile, 'utf-8');
+    const parsed = JSON.parse(rawSeed);
+
+    if (parsed.user_account) {
+      db.prepare(`
+        INSERT OR REPLACE INTO user_account
+        (id, name, email, location, role, avatar_url, password_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        parsed.user_account.id,
+        parsed.user_account.name,
+        parsed.user_account.email,
+        parsed.user_account.location,
+        parsed.user_account.role,
+        parsed.user_account.avatarUrl || null,
+        parsed.user_account.password_hash
+      );
+    }
+
+    if (parsed.vault_addresses && typeof parsed.vault_addresses === 'object') {
+      const stmt = db.prepare(`
+        INSERT OR REPLACE INTO vault_addresses (asset, address, updated_at, updated_by)
+        VALUES (?, ?, ?, ?)
+      `);
+      for (const [asset, address] of Object.entries(parsed.vault_addresses)) {
+        stmt.run(asset, address, Date.now(), 'usr_declan_salo');
+      }
+    }
+
+    if (parsed.admin_settings?.withdrawals) {
+      db.prepare(`
+        INSERT OR REPLACE INTO admin_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+      `).run('withdrawals', JSON.stringify(parsed.admin_settings.withdrawals), Date.now());
+    }
+
+    if (parsed.admin_settings?.sole_beneficiary) {
+      db.prepare(`
+        INSERT OR REPLACE INTO admin_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+      `).run('sole_beneficiary', JSON.stringify(parsed.admin_settings.sole_beneficiary), Date.now());
+    }
+
+    if (Array.isArray(parsed.auth_sessions)) {
+      const sessStmt = db.prepare(`
+        INSERT OR IGNORE INTO auth_sessions
+        (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, revoked_reason, is_master)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const s of parsed.auth_sessions) {
+        sessStmt.run(
+          s.id,
+          s.token,
+          s.userId,
+          s.deviceName,
+          s.ipAddress,
+          s.location,
+          s.createdAt,
+          s.lastActiveAt,
+          s.isRevoked ? 1 : 0,
+          s.revokedReason || null,
+          s.isMaster ? 1 : 0
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse bundled gist_seed.json:', err);
+  }
+}
+
+// 1. Seed Vault Addresses fallback
 const countVault = db.prepare('SELECT count(*) as count FROM vault_addresses').get() as { count: number };
 if (countVault.count === 0) {
   let initialAddresses = {

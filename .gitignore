@@ -41,5 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-data/
-
+# database binaries
+data/moback.db*
+!data/gist_seed.json

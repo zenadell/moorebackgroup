@@ -1,0 +1,15 @@
+[
+  {
+    "id": "tx_ledger_1",
+    "timestamp": 1781623476000,
+    "type": "deposit",
+    "asset": "USDT",
+    "network": "Tron (TRC-20)",
+    "amount": 1.5,
+    "txId": "43fc2c5a62271797e28a45531100f8603cee6370f13e329cf2195607719e6000",
+    "status": "confirmed",
+    "confirmations": 1,
+    "vaultAddress": "TLyqzVGLV1srkB7dToTAEqgDSfPtXRJZYH",
+    "credited": true
+  }
+]

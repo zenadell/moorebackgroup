@@ -42,7 +42,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'moback_session_token';
 const NOTICE_KEY = 'moback_revocation_notice';
-const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000ms)
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes (900,000ms) of zero user interaction
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -53,7 +53,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [revocationNotice, setRevocationNotice] = useState<string | null>(null);
 
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const clearRevocationNotice = () => {
     setRevocationNotice(null);
@@ -130,13 +129,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [checkSession]);
 
-  // Real-time Heartbeat: checks session status every 4 seconds to immediately detect remote kick-outs
+  // Real-time Heartbeat: checks session status every 8 seconds to detect remote kick-outs
+  const consecutiveHeartbeatFailuresRef = useRef<number>(0);
+  const lastActivityTimestampRef = useRef<number>(Date.now());
+
   useEffect(() => {
     if (!isAuthenticated) {
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
+      consecutiveHeartbeatFailuresRef.current = 0;
       return;
     }
 
@@ -154,9 +157,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         });
 
-        const data = await res.json();
-        if (!res.ok || !data.authenticated) {
-          // Session was revoked on server!
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data.authenticated) {
+          consecutiveHeartbeatFailuresRef.current = 0;
+          return;
+        }
+
+        // Detect explicit revocation from admin
+        const isExplicitRevocation =
+          res.status === 401 &&
+          (data.reason?.toLowerCase().includes('terminated') ||
+            data.reason?.toLowerCase().includes('revoked'));
+
+        consecutiveHeartbeatFailuresRef.current += 1;
+
+        if (isExplicitRevocation || consecutiveHeartbeatFailuresRef.current >= 3) {
           const reason =
             data.reason || 'This session has been terminated by account owner (Declan Salo).';
           localStorage.removeItem(TOKEN_KEY);
@@ -173,7 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // network error, ignore single poll
       }
-    }, 4000);
+    }, 8000);
 
     return () => {
       if (heartbeatRef.current) {
@@ -184,78 +200,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated]);
 
   // -------------------------------------------------------------
-  // 5-Minute Inactivity Auto-Logout Tracker
-  // Automatically logs user out and locks account if idle for 5 minutes
+  // 15-Minute Inactivity Auto-Logout Tracker (Activity Timestamp Architecture)
+  // Automatically logs user out and locks account only after 15 minutes of uninterrupted zero interaction
   // -------------------------------------------------------------
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-      inactivityTimerRef.current = null;
-    }
-
+  useEffect(() => {
     if (!isAuthenticated) return;
 
-    inactivityTimerRef.current = setTimeout(async () => {
-      const lockNotice =
-        'Account Locked: You have been automatically logged out due to 5 minutes of inactivity for portfolio security.';
+    // Reset interaction timestamp immediately upon authentication
+    lastActivityTimestampRef.current = Date.now();
 
-      const currentToken = localStorage.getItem(TOKEN_KEY);
-      if (currentToken) {
+    const onUserActivity = () => {
+      lastActivityTimestampRef.current = Date.now();
+    };
+
+    const activityEvents = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+      'click',
+      'wheel',
+      'visibilitychange',
+    ];
+
+    activityEvents.forEach((ev) => {
+      window.addEventListener(ev, onUserActivity, { passive: true });
+    });
+
+    // Check idle duration every 15 seconds
+    const intervalId = setInterval(async () => {
+      const elapsed = Date.now() - lastActivityTimestampRef.current;
+      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+        const lockNotice =
+          'Account Locked: You have been automatically logged out due to 15 minutes of inactivity for portfolio security.';
+
+        const currentToken = localStorage.getItem(TOKEN_KEY);
+        if (currentToken) {
+          try {
+            await fetch('/api/auth/logout', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${currentToken}` },
+            });
+          } catch {
+            // ignore
+          }
+        }
+
+        localStorage.removeItem(TOKEN_KEY);
         try {
-          await fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${currentToken}` },
-          });
+          sessionStorage.setItem(NOTICE_KEY, lockNotice);
         } catch {
           // ignore
         }
+
+        setUser(null);
+        setSessionId(null);
+        setIsMaster(false);
+        setIsAuthenticated(false);
+        setRevocationNotice(lockNotice);
       }
-
-      localStorage.removeItem(TOKEN_KEY);
-      try {
-        sessionStorage.setItem(NOTICE_KEY, lockNotice);
-      } catch {
-        // ignore
-      }
-
-      setUser(null);
-      setSessionId(null);
-      setIsMaster(false);
-      setIsAuthenticated(false);
-      setRevocationNotice(lockNotice);
-    }, INACTIVITY_TIMEOUT_MS);
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-        inactivityTimerRef.current = null;
-      }
-      return;
-    }
-
-    resetInactivityTimer();
-
-    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
-    const handleActivity = () => {
-      resetInactivityTimer();
-    };
-
-    activityEvents.forEach((ev) => {
-      window.addEventListener(ev, handleActivity, { passive: true });
-    });
+    }, 15000);
 
     return () => {
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-        inactivityTimerRef.current = null;
-      }
+      clearInterval(intervalId);
       activityEvents.forEach((ev) => {
-        window.removeEventListener(ev, handleActivity);
+        window.removeEventListener(ev, onUserActivity);
       });
     };
-  }, [isAuthenticated, resetInactivityTimer]);
+  }, [isAuthenticated]);
 
   const login = async (
     email: string,
@@ -288,6 +301,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(TOKEN_KEY, data.token);
       clearRevocationNotice();
 
+      lastActivityTimestampRef.current = Date.now();
+      consecutiveHeartbeatFailuresRef.current = 0;
+
       setUser(data.user);
       setSessionId(data.sessionId);
       setIsMaster(!!data.isMaster);
@@ -318,6 +334,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       localStorage.setItem(TOKEN_KEY, data.token);
       clearRevocationNotice();
+
+      lastActivityTimestampRef.current = Date.now();
+      consecutiveHeartbeatFailuresRef.current = 0;
 
       setUser(data.user);
       setSessionId(data.sessionId);

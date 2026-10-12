@@ -4,6 +4,16 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "MooreBach Group | Portfolio & Live Market Intelligence",
   description: "Executive investment portfolio and live market intelligence dashboard - https://moorebachgroup.com/dashboard",
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
