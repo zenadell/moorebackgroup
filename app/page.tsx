@@ -139,6 +139,7 @@ function DashboardContent() {
             setIsMobileMenuOpen(false);
           }}
           holdingsCount={holdings.length}
+          portfolioTotal={portfolioTotal}
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
           isLiveActive={isLiveActive}

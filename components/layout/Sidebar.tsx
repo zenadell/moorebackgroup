@@ -22,6 +22,7 @@ interface SidebarProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   holdingsCount?: number;
+  portfolioTotal?: number;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
   isLiveActive?: boolean;
@@ -33,6 +34,7 @@ export function Sidebar({
   currentTab,
   onSelectTab,
   holdingsCount = 17,
+  portfolioTotal = 120570000,
   isOpenMobile,
   onCloseMobile,
   isLiveActive = false,
@@ -281,7 +283,7 @@ export function Sidebar({
                 </span>
               </div>
               <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', lineHeight: '1.4' }}>
-                Balance: <strong style={{ color: '#0f172a' }}>$120.57M</strong>
+                Balance: <strong style={{ color: '#0f172a' }}>${(portfolioTotal / 1_000_000).toFixed(2)}M</strong>
                 <br />
                 {holdingsCount} Listed Holdings
               </p>
@@ -429,7 +431,7 @@ export function Sidebar({
           </span>
         </div>
         <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', lineHeight: '1.4' }}>
-          Balance: <strong style={{ color: '#0f172a' }}>$120.57M</strong>
+          Balance: <strong style={{ color: '#0f172a' }}>${(portfolioTotal / 1_000_000).toFixed(2)}M</strong>
           <br />
           {holdingsCount} Listed Holdings
         </p>
