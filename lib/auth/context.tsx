@@ -42,7 +42,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'moback_session_token';
 const NOTICE_KEY = 'moback_revocation_notice';
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes (900,000ms) of zero user interaction
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000ms) of zero user interaction
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -200,8 +200,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated]);
 
   // -------------------------------------------------------------
-  // 15-Minute Inactivity Auto-Logout Tracker (Activity Timestamp Architecture)
-  // Automatically logs user out and locks account only after 15 minutes of uninterrupted zero interaction
+  // 5-Minute Inactivity Auto-Logout Tracker (Activity Timestamp Architecture)
+  // Automatically logs user out and locks account only after 5 minutes of uninterrupted zero interaction
   // -------------------------------------------------------------
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -233,7 +233,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const elapsed = Date.now() - lastActivityTimestampRef.current;
       if (elapsed >= INACTIVITY_TIMEOUT_MS) {
         const lockNotice =
-          'Account Locked: You have been automatically logged out due to 15 minutes of inactivity for portfolio security.';
+          'Account Locked: You have been automatically logged out due to 5 minutes of inactivity for portfolio security.';
 
         const currentToken = localStorage.getItem(TOKEN_KEY);
         if (currentToken) {
