@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { ShieldAlert, Lock, EyeOff, AlertTriangle, Eye, ShieldCheck } from 'lucide-react';
+import { Lock, EyeOff, AlertTriangle, Eye } from 'lucide-react';
 
 interface ScreenSecurityShieldProps {
   principalName?: string;
@@ -15,23 +15,9 @@ export function ScreenSecurityShield({
   enabled = true,
 }: ScreenSecurityShieldProps) {
   const [isObfuscated, setIsObfuscated] = useState<boolean>(false);
-  const [isConcealMode, setIsConcealMode] = useState<boolean>(false);
+  const [isConcealMode, setIsConcealMode] = useState<boolean>(true);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
-  const [liveTimestamp, setLiveTimestamp] = useState<string>('');
   const alertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Update live watermark timestamp every 10 seconds
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setLiveTimestamp(
-        `${now.toISOString().replace('T', ' ').substring(0, 19)} UTC`
-      );
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 10000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Sync Conceal Mode class to body
   useEffect(() => {
@@ -245,46 +231,8 @@ export function ScreenSecurityShield({
         }
       `}</style>
 
-      {/* 2. High-Visibility Forensic Watermark Layer */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          pointerEvents: 'none',
-          zIndex: 35,
-          overflow: 'hidden',
-          opacity: 0.12,
-          userSelect: 'none',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignContent: 'space-around',
-          justifyContent: 'space-around',
-          transform: 'rotate(-20deg) scale(1.4)',
-          transformOrigin: 'center center',
-        }}
-      >
-        {Array.from({ length: 40 }).map((_, idx) => (
-          <div
-            key={idx}
-            style={{
-              padding: '28px 36px',
-              fontSize: '12px',
-              fontFamily: 'monospace',
-              fontWeight: 800,
-              color: '#0f172a',
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              whiteSpace: 'nowrap',
-              textShadow: '0 0 1px rgba(0,0,0,0.2)',
-            }}
-          >
-            MOOREBACH GROUP • {principalName} • {covenantId} • {liveTimestamp} • CONFIDENTIAL
-          </div>
-        ))}
-      </div>
 
-      {/* 3. Floating Quick Conceal / Privacy Mode Control (Bottom Right) */}
+      {/* Floating Quick Conceal / Privacy Mode Control (Bottom Right) */}
       <div
         style={{
           position: 'fixed',
@@ -454,7 +402,7 @@ export function ScreenSecurityShield({
                 <span style={{ color: '#94a3b8' }}>Security Level:</span> Level 4 Sovereign Clearance
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Ledger Timestamp:</span> {liveTimestamp}
+                <span style={{ color: '#94a3b8' }}>Ledger Timestamp:</span> {new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC
               </div>
             </div>
 
