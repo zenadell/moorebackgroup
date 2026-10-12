@@ -400,11 +400,3 @@ body {
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
   animation: pulseGlow 1.4s ease-in-out infinite;
 }
-
-/* Institutional Anti-Capture & Print Protection */
-@media print {
-  html, body {
-    display: none !important;
-    visibility: hidden !important;
-  }
-}
