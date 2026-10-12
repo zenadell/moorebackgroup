@@ -167,6 +167,29 @@ body {
   background-color: #f8fafc;
 }
 
+.data-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #e9edf3;
+}
+
+.data-skeleton::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  animation: data-skeleton-shimmer 1.4s infinite;
+}
+
+@keyframes data-skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .data-skeleton::after { animation: none; transform: none; }
+}
+
 .holdings-table-scroll {
   width: 100%;
   max-width: 100%;

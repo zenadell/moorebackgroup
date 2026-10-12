@@ -4,6 +4,7 @@ import { validateSession, updateUserProfile, getUserProfile } from '@/lib/auth/s
 export async function GET() {
   try {
     const user = await getUserProfile();
+    if (!user) return NextResponse.json({ success: false, error: 'Profile record is not available' }, { status: 503 });
     return NextResponse.json({ success: true, user });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';

@@ -4,6 +4,9 @@ import { getBeneficiaryInfo } from '@/lib/beneficiary/service';
 export async function GET() {
   try {
     const beneficiary = await getBeneficiaryInfo();
+    if (!beneficiary) {
+      return NextResponse.json({ success: false, error: 'Beneficiary record is not available' }, { status: 503 });
+    }
     return NextResponse.json({
       success: true,
       beneficiary,

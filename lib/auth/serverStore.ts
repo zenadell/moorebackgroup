@@ -82,7 +82,7 @@ function hashPassword(pwd: string): string {
   return crypto.createHash('sha256').update(pwd.trim()).digest('hex');
 }
 
-export async function getUserProfile(): Promise<UserProfile> {
+export async function getUserProfile(): Promise<UserProfile | null> {
   const row = db.prepare('SELECT id, name, email, location, role, avatar_url FROM user_account LIMIT 1').get() as any;
   if (row) {
     return {
@@ -94,14 +94,7 @@ export async function getUserProfile(): Promise<UserProfile> {
       avatarUrl: row.avatar_url,
     };
   }
-  return {
-    id: 'usr_declan_salo',
-    name: 'Declan Salo',
-    email: 'declansalo1@gmail.com',
-    location: 'Nashville Tennessee, United States',
-    role: 'Account Owner & Portfolio Principal',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  };
+  return null;
 }
 
 export async function updateUserProfile(profile: {
@@ -111,6 +104,7 @@ export async function updateUserProfile(profile: {
   avatarUrl?: string;
 }): Promise<UserProfile> {
   const current = await getUserProfile();
+  if (!current) throw new Error('Profile record is not available');
   const name = profile.name ? profile.name.trim() : current.name;
   const email = profile.email ? profile.email.trim() : current.email;
   const location = profile.location ? profile.location.trim() : current.location;
@@ -162,6 +156,7 @@ export async function updatePassword(
   currentSessionId?: string
 ): Promise<{ success: boolean; error?: string; revokedCount?: number }> {
   const user = await getUserProfile();
+  if (!user) throw new Error('Profile record is not available');
   const isCorrect = await verifyCredentials(user.email, currentPass);
 
   if (!isCorrect) {
@@ -196,6 +191,7 @@ export async function createSession(
   location: string = 'Nashville Tennessee, United States'
 ): Promise<AuthSession> {
   const user = await getUserProfile();
+  if (!user) throw new Error('Profile record is not available');
   const id = `sess_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
   // Check if there is already an active unrevoked master session
@@ -243,6 +239,7 @@ export async function createMasterSession(
   location: string = 'Nashville Tennessee, United States'
 ): Promise<AuthSession> {
   const user = await getUserProfile();
+  if (!user) throw new Error('Profile record is not available');
   const id = `sess_master_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const token = signToken(id, user.id, true, Date.now());
 
@@ -311,6 +308,7 @@ export async function validateSession(token: string): Promise<{
 
       // Rehydrate this verified session into local SQLite container
       const user = await getUserProfile();
+      if (!user) return { valid: false, reason: 'Profile record is not available' };
       db.prepare(`
         INSERT OR IGNORE INTO auth_sessions
         (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
@@ -369,6 +367,7 @@ export async function validateSession(token: string): Promise<{
   };
 
   const user = await getUserProfile();
+  if (!user) return { valid: false, reason: 'Profile record is not available' };
 
   return {
     valid: true,

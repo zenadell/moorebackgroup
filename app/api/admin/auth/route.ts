@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       const isKeyValid = await verifyMasterPassword(saloKey);
       if (isKeyValid) {
         const user = await getUserProfile();
+        if (!user) return NextResponse.json({ success: false, authorized: false, error: 'Profile record is not available' }, { status: 503 });
         return NextResponse.json({
           success: true,
           authorized: true,
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     const session = await createMasterSession(detectedDevice, ip);
     const user = await getUserProfile();
+    if (!user) return NextResponse.json({ success: false, authorized: false, error: 'Profile record is not available' }, { status: 503 });
 
     const response = NextResponse.json({
       success: true,

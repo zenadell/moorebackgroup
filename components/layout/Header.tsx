@@ -424,11 +424,11 @@ export function Header({
               }}
             >
               <div className="border-b border-slate-100 px-3 py-2" style={{ borderBottom: '1px solid #f1f5f9', padding: '8px 12px' }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{user?.name || 'Declan Salo'}</p>
-                <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{user?.email || 'declansalo1@gmail.com'}</p>
-                {(user?.location || 'Nashville Tennessee, United States') && (
+                {user?.name && <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{user.name}</p>}
+                {user?.email && <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{user.email}</p>}
+                {user?.location && (
                   <p style={{ fontSize: '10px', color: '#64748b', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span>📍</span> {user?.location || 'Nashville Tennessee, United States'}
+                    <span>📍</span> {user.location}
                   </p>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>

@@ -31,12 +31,16 @@ export function BeneficiaryView({ totalBalance = 120570000 }: BeneficiaryViewPro
     async function loadBeneficiary() {
       try {
         const res = await fetch('/api/beneficiary');
+        if (!res.ok) throw new Error('Beneficiary data is unavailable');
         const data = await res.json();
         if (data.success && data.beneficiary) {
           setBeneficiary(data.beneficiary);
+        } else {
+          setBeneficiary(null);
         }
       } catch (err) {
         console.error('Failed to load beneficiary:', err);
+        setBeneficiary(null);
       } finally {
         setIsLoading(false);
       }
@@ -53,24 +57,21 @@ export function BeneficiaryView({ totalBalance = 120570000 }: BeneficiaryViewPro
   if (isLoading) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-        <div style={{ display: 'inline-block', width: '32px', height: '32px', border: '3px solid #e2e8f0', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <p style={{ marginTop: '12px', fontSize: '13px' }}>Loading Sole Beneficiary records...</p>
+        <div className="data-skeleton" style={{ height: '76px', borderRadius: '14px', marginBottom: '16px' }} />
+        <div className="data-skeleton" style={{ height: '300px', borderRadius: '14px' }} />
       </div>
     );
   }
 
-  const b = beneficiary || {
-    name: 'Elena Rostova',
-    relationship: 'Sole Primary Beneficiary (100% Allocation)',
-    email: 'elena.rostova@icloud.com',
-    address: '1200 Broadway, Penthouse 42B, Nashville, TN 37203, United States',
-    allocationPercent: 100,
-    covenantId: 'MBG-BEN-88429-PRI',
-    designationDate: 'April 12, 2026',
-    status: 'Active & Legally Verified' as const,
-    avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&auto=format&fit=crop&q=80',
-    notes: 'Designated 100% sole irrevocable beneficiary under MooreBach Group Portfolio Succession Charter.',
-  };
+  if (!beneficiary) {
+    return (
+      <div style={{ display: 'grid', gap: '16px' }} aria-label="Beneficiary data unavailable">
+        {[1, 2, 3].map((item) => <div key={item} className="data-skeleton" style={{ height: item === 1 ? '72px' : '180px', borderRadius: '14px' }} />)}
+      </div>
+    );
+  }
+
+  const b = beneficiary;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -216,8 +217,7 @@ export function BeneficiaryView({ totalBalance = 120570000 }: BeneficiaryViewPro
                       display: 'block',
                     }}
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&auto=format&fit=crop&q=80';
+                      e.currentTarget.style.display = 'none';
                     }}
                   />
                 ) : (
@@ -228,13 +228,13 @@ export function BeneficiaryView({ totalBalance = 120570000 }: BeneficiaryViewPro
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: '#1e3a8a',
+                      backgroundColor: '#e2e8f0',
                       color: '#ffffff',
                       fontSize: '36px',
                       fontWeight: 700,
                     }}
                   >
-                    {b.name[0] || 'B'}
+                    {b.name?.[0] || ''}
                   </div>
                 )}
               </div>

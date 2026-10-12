@@ -11,7 +11,7 @@ interface GistDatabasePayload {
     role: string;
     avatarUrl?: string;
     password_hash: string;
-  };
+  } | null;
   vault_addresses: Record<string, string>;
   admin_settings: {
     withdrawals: any;
@@ -100,20 +100,6 @@ export function exportCurrentDbToPayload(): GistDatabasePayload {
     }
   }
 
-  // Safeguard: if beneficiary or avatar are missing from SQLite, pull from bundled gist_seed.json
-  try {
-    const seedFile = path.join(process.cwd(), 'data', 'gist_seed.json');
-    if (fs.existsSync(seedFile)) {
-      const seed = JSON.parse(fs.readFileSync(seedFile, 'utf-8'));
-      if (!beneficiaryConfig && seed.admin_settings?.sole_beneficiary) {
-        beneficiaryConfig = seed.admin_settings.sole_beneficiary;
-      }
-      if (user && !user.avatar_url && seed.user_account?.avatarUrl) {
-        user.avatar_url = seed.user_account.avatarUrl;
-      }
-    }
-  } catch {}
-
   return {
     user_account: user
       ? {
@@ -125,21 +111,7 @@ export function exportCurrentDbToPayload(): GistDatabasePayload {
           avatarUrl: user.avatar_url,
           password_hash: user.password_hash,
         }
-      : (() => {
-          try {
-            const seed = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data', 'gist_seed.json'), 'utf-8'));
-            if (seed.user_account) return seed.user_account;
-          } catch {}
-          return {
-            id: 'usr_declan_salo',
-            name: 'Declan Salo',
-            email: 'declansalo1@gmail.com',
-            location: 'Nashville Tennessee, United States',
-            role: 'Account Owner & Portfolio Principal',
-            avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-            password_hash: '5d30e0f0e8203797a22838a77489684ba6275373bcf46b71c3ea25f1c91f5eb1',
-          };
-        })(),
+      : null,
     vault_addresses: vaultMap,
     admin_settings: {
       withdrawals: withdrawalConfig,

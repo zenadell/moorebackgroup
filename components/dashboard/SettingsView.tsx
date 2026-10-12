@@ -21,9 +21,9 @@ export function SettingsView() {
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences'>('profile');
 
   // Profile Form States
-  const [name, setName] = useState(user?.name || 'Declan Salo');
-  const [email, setEmail] = useState(user?.email || 'declansalo1@gmail.com');
-  const [location, setLocation] = useState(user?.location || 'Nashville Tennessee, United States');
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [location, setLocation] = useState(user?.location || '');
   const [accountType, setAccountType] = useState('Private Portfolio / High-Net-Worth');
 
   // Preferences Form States
@@ -35,6 +35,13 @@ export function SettingsView() {
   const [themeMode, setThemeMode] = useState('Light (Standard)');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  React.useEffect(() => {
+    if (!user) return;
+    setName(user.name || '');
+    setEmail(user.email || '');
+    setLocation(user.location || '');
+  }, [user]);
 
   const handleSavePreferences = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,15 +189,15 @@ export function SettingsView() {
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
-                name[0] || 'D'
+                user?.name?.[0] || <div className="data-skeleton" style={{ width: '100%', height: '100%' }} />
               )}
             </div>
             <div>
               <h3 style={{ fontSize: '17px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
-                {name}
+                {user?.name || <span className="data-skeleton" style={{ display: 'inline-block', width: '120px', height: '18px', verticalAlign: 'middle' }} />}
               </h3>
               <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 6px' }}>
-                {email}
+                {user?.email || <span className="data-skeleton" style={{ display: 'inline-block', width: '160px', height: '14px', verticalAlign: 'middle' }} />}
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span

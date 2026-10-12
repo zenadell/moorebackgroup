@@ -89,12 +89,8 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
   const [copied, setCopied] = useState(false);
 
   // Dynamic Vault Addresses from persistent storage
-  const [addresses, setAddresses] = useState({
-    USDT_TRC20: 'TLyqzVGLV1srkB7dToTAEqgDSfPtXRJZYH',
-    USDT_ERC20: '0x71C8A60e0d5D9fB821c9Ac9c42E5F7a1E12a6D95',
-    BTC: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
-    ETH: '0x71C8A60e0d5D9fB821c9Ac9c42E5F7a1E12a6D95',
-  });
+  const [addresses, setAddresses] = useState<Record<string, string>>({});
+  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
 
   // Master Account Edit Address State
   const [isEditingAddress, setIsEditingAddress] = useState(false);
@@ -122,6 +118,7 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
         const data = await res.json();
         if (data.success && data.config?.addresses) {
           setAddresses(data.config.addresses);
+          setIsConfigLoaded(true);
         }
       }
     } catch {
@@ -142,6 +139,18 @@ export function DepositModal({ isOpen, onClose, onCreditSuccess }: DepositModalP
   }, [isOpen, fetchConfig]);
 
   if (!isOpen) return null;
+
+  if (!isConfigLoaded) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="data-skeleton h-8 w-2/3 rounded-lg" />
+          <div className="data-skeleton mt-5 h-40 rounded-xl" />
+          <div className="data-skeleton mt-4 h-10 rounded-lg" />
+        </div>
+      </div>
+    );
+  }
 
   // Resolve current active address based on selection
   let currentAddress = addresses.USDT_TRC20;

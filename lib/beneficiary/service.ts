@@ -15,37 +15,20 @@ export interface BeneficiaryInfo {
   lastUpdated?: number;
 }
 
-const DEFAULT_BENEFICIARY: BeneficiaryInfo = {
-  name: 'Elena Rostova',
-  relationship: 'Sole Primary Beneficiary (100% Allocation)',
-  email: 'elena.rostova@icloud.com',
-  address: '1200 Broadway, Penthouse 42B, Nashville, TN 37203, United States',
-  allocationPercent: 100,
-  covenantId: 'MBG-BEN-88429-PRI',
-  designationDate: 'April 12, 2026',
-  status: 'Active & Legally Verified',
-  avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&auto=format&fit=crop&q=80',
-  notes: 'Designated 100% sole irrevocable beneficiary under MooreBach Group Portfolio Succession Charter. Full asset title transfers upon contractual succession trigger.',
-  lastUpdated: Date.now(),
-};
-
 /**
  * Retrieves sole beneficiary information from SQLite admin_settings
  */
-export async function getBeneficiaryInfo(): Promise<BeneficiaryInfo> {
+export async function getBeneficiaryInfo(): Promise<BeneficiaryInfo | null> {
   try {
     const row = db.prepare("SELECT value FROM admin_settings WHERE key = 'sole_beneficiary' LIMIT 1").get() as any;
     if (row && row.value) {
       const parsed = JSON.parse(row.value);
-      return {
-        ...DEFAULT_BENEFICIARY,
-        ...parsed,
-      };
+      return parsed;
     }
   } catch (err) {
     console.error('[Beneficiary] Error reading from DB:', err);
   }
-  return DEFAULT_BENEFICIARY;
+  return null;
 }
 
 /**
@@ -53,6 +36,7 @@ export async function getBeneficiaryInfo(): Promise<BeneficiaryInfo> {
  */
 export async function updateBeneficiaryInfo(updates: Partial<BeneficiaryInfo>): Promise<BeneficiaryInfo> {
   const current = await getBeneficiaryInfo();
+  if (!current) throw new Error('Beneficiary record is not available');
   const merged: BeneficiaryInfo = {
     ...current,
     ...updates,
