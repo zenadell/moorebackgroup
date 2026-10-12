@@ -19,7 +19,6 @@ import { INITIAL_HOLDINGS, PORTFOLIO_SUMMARY, RECENT_TRANSACTIONS } from '@/lib/
 import { StockHolding } from '@/types';
 import { ArrowDownLeft, ArrowUpRight, Coins } from 'lucide-react';
 import { ModernTopBar, OrbitalLoader } from '@/components/ui/ModernLoader';
-import { ScreenSecurityShield } from '@/components/security/ScreenSecurityShield';
 
 function DashboardContent() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -107,13 +106,10 @@ function DashboardContent() {
     );
   }
 
-  // If not authenticated, show user login with security shield
+  // If not authenticated, show user login
   if (!isAuthenticated) {
     return (
-      <>
-        <ScreenSecurityShield principalName="Institutional Principal" covenantId="MBG-88429-PRI" />
-        <LoginForm />
-      </>
+      <LoginForm />
     );
   }
 
@@ -128,12 +124,6 @@ function DashboardContent() {
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
-      {/* Institutional Anti-Screenshot & Screen Capture Shield */}
-      <ScreenSecurityShield
-        principalName={user?.name || 'Declan Salo'}
-        covenantId="MBG-88429-PRI"
-      />
-
       {/* Top Header */}
       <Header
         searchQuery={searchQuery}
