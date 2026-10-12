@@ -142,16 +142,9 @@ export function HoldingsTable({
         </div>
       </div>
 
-      {/* 17 Companies Table - Horizontally slidable on mobile/tablet */}
-      <div
-        style={{
-          marginTop: '12px',
-          width: '100%',
-          overflowX: 'auto',
-          WebkitOverflowScrolling: 'touch',
-        }}
-      >
-        <table style={{ width: '100%', minWidth: '860px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '13px' }}>
+      {/* Keep the full table width inside its own swipeable viewport on mobile. */}
+      <div className="holdings-table-scroll" role="region" aria-label="Company shares table" tabIndex={0}>
+        <table className="holdings-table">
           <thead>
             <tr style={{ color: '#94a3b8', fontSize: '11px', borderBottom: '1px solid #f1f4f9', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
               <th style={{ padding: '12px 8px 12px 0', fontWeight: 600, whiteSpace: 'nowrap' }}>Company / Ticker</th>

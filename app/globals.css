@@ -167,6 +167,31 @@ body {
   background-color: #f8fafc;
 }
 
+.holdings-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+}
+
+.holdings-table-scroll:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.holdings-table {
+  width: 100%;
+  min-width: 1080px;
+  text-align: left;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
 
 /* 3 Middle Visualization Cards Row - Swipable on mobile/tablet */
 .charts-grid {
