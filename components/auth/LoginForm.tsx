@@ -107,7 +107,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     setIsSubmitting(true);
     try {
       const deviceName = getDeviceName();
-      const res = await verifyOtp(otpId, otpCode.trim(), deviceName);
+      const res = await verifyOtp(otpId, otpCode.replace(/\D/g, ''), deviceName);
 
       if (res.success) {
         if (onSuccess) onSuccess();
@@ -416,7 +416,9 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                   required
                   disabled={isSubmitting}
                   value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="000000"
                   style={{
                     border: 'none',

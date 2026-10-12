@@ -90,14 +90,11 @@ export async function generateOtp(
   const settings = await getTwoFactorSettings();
   const targetEmail = settings.notifyEmail || email;
 
-  // 6-digit numeric verification code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // Generate uniformly from the full six-digit range, including leading zeroes.
+  const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
   const id = `otp_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const createdAt = Date.now();
   const expiresAt = createdAt + 10 * 60 * 1000; // 10 minutes
-
-  // Invalidate any previously un-used OTPs for this email to prevent reuse
-  db.prepare('UPDATE otp_codes SET used = 1 WHERE email = ? AND used = 0').run(targetEmail);
 
   db.prepare(`
     INSERT INTO otp_codes (id, code, email, device_name, ip_address, created_at, expires_at, used)
@@ -250,7 +247,11 @@ export async function verifyOtp(
     return { valid: false, error: 'Verification code is required' };
   }
 
-  const cleanCode = inputCode.trim().replace(/\s+/g, '');
+  // Clipboard copies may contain separators or formatting; only compare digits.
+  const cleanCode = inputCode.replace(/\D/g, '');
+  if (!/^\d{6}$/.test(cleanCode)) {
+    return { valid: false, error: 'Enter the complete 6-digit security code.' };
+  }
 
   const row = db.prepare(`
     SELECT id, code, email, expires_at, used
@@ -274,8 +275,14 @@ export async function verifyOtp(
     return { valid: false, error: 'Invalid verification code. Please check and try again.' };
   }
 
-  // Mark as used
-  db.prepare('UPDATE otp_codes SET used = 1 WHERE id = ?').run(otpId);
+  // Atomically consume the code so simultaneous submissions cannot both succeed.
+  const consumed = db.prepare(`
+    UPDATE otp_codes SET used = 1
+    WHERE id = ? AND code = ? AND used = 0 AND expires_at >= ?
+  `).run(otpId, cleanCode, Date.now());
+  if (consumed.changes !== 1) {
+    return { valid: false, error: 'This security code is no longer active. Use the latest active code or request a new one.' };
+  }
   queueGistPush();
 
   return { valid: true, email: row.email };

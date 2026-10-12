@@ -147,6 +147,7 @@ export default function SaloMasterPage() {
   });
   const [smtpPass, setSmtpPass] = useState('');
   const [otpLogs, setOtpLogs] = useState<OtpLog[]>([]);
+  const activeOtp = otpLogs.find((log) => !log.used && Date.now() < log.expiresAt);
   const [isSaving2FA, setIsSaving2FA] = useState(false);
   const [twoFactorStatusMsg, setTwoFactorStatusMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -1475,7 +1476,7 @@ export default function SaloMasterPage() {
         {activeTab === 'two-factor' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Real-time Live OTP Highlight Card */}
-            {otpLogs.length > 0 && !otpLogs[0].used && Date.now() < otpLogs[0].expiresAt && (
+            {activeOtp && (
               <div
                 style={{
                   backgroundColor: 'rgba(37, 99, 235, 0.12)',
@@ -1497,7 +1498,7 @@ export default function SaloMasterPage() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px' }}>
                     <span
-                      onClick={() => handleCopy(otpLogs[0].code, 'active-otp')}
+                      onClick={() => handleCopy(activeOtp.code, 'active-otp')}
                       title="Click to copy OTP"
                       style={{
                         fontSize: '38px',
@@ -1510,20 +1511,20 @@ export default function SaloMasterPage() {
                         transition: 'color 0.2s ease',
                       }}
                     >
-                      {otpLogs[0].code}
+                      {activeOtp.code}
                     </span>
                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      Requested from: <strong style={{ color: '#ffffff' }}>{otpLogs[0].deviceName}</strong> ({otpLogs[0].ipAddress})
+                      Requested from: <strong style={{ color: '#ffffff' }}>{activeOtp.deviceName}</strong> ({activeOtp.ipAddress})
                     </span>
                   </div>
                   <span style={{ fontSize: '11px', color: '#ef4444' }}>
-                    Expires in {Math.max(0, Math.round((otpLogs[0].expiresAt - Date.now()) / 1000))}s
+                    Expires in {Math.max(0, Math.round((activeOtp.expiresAt - Date.now()) / 1000))}s
                   </span>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => handleCopy(otpLogs[0].code, 'active-otp')}
+                  onClick={() => handleCopy(activeOtp.code, 'active-otp')}
                   style={{
                     backgroundColor: copiedKey === 'active-otp' ? '#10b981' : '#2563eb',
                     color: '#ffffff',
