@@ -6,9 +6,29 @@ const ENCRYPTED_PREFIX = 'enc:v1:';
 const KEY_SALT = 'moorebach-admin-secret-vault-v1';
 
 /**
- * Derives a 256-bit AES key from server-side environment material (never synced to Gist or client).
+ * Derives the primary 256-bit AES key.
+ *
+ * The key MUST be identical on localhost and on the cloud deployment, because encrypted
+ * secrets are stored in the shared GitHub Gist database and decrypted wherever the app runs.
+ * Priority: MOBACK_SECRETS_KEY (recommended) -> GITHUB_GIST_ID (always shared by every
+ * deployment that reads the same Gist database).
  */
 function deriveAesKey(): Buffer {
+  const explicitKey = (process.env.MOBACK_SECRETS_KEY || '').trim();
+  const gistId = (process.env.GITHUB_GIST_ID || '').trim();
+  const stableMaterial = explicitKey
+    ? `explicit:${explicitKey}`
+    : gistId
+      ? `gist:${gistId}`
+      : 'moback-local-fallback-material';
+
+  return crypto.createHash('sha256').update(`${KEY_SALT}:stable:${stableMaterial}`).digest();
+}
+
+/**
+ * Legacy key derivation (machine-specific). Used only to decrypt values saved by older builds.
+ */
+function deriveLegacyAesKey(): Buffer {
   const keyMaterial = [
     process.env.MOBACK_SECRETS_KEY,
     process.env.GITHUB_TOKEN,
@@ -20,6 +40,20 @@ function deriveAesKey(): Buffer {
     .join('|');
 
   return crypto.createHash('sha256').update(`${KEY_SALT}:${keyMaterial}`).digest();
+}
+
+function tryDecryptWithKey(key: Buffer, ivHex: string, tagHex: string, dataHex: string): string {
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(dataHex, 'hex')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8').trim();
+  } catch {
+    return '';
+  }
 }
 
 export function isEncryptedSecret(value?: string | null): boolean {
@@ -51,26 +85,24 @@ export function decryptSecret(stored?: string | null): string {
   if (!value) return '';
   if (!isEncryptedSecret(value)) return value;
 
-  try {
-    const rest = value.slice(ENCRYPTED_PREFIX.length);
-    const parts = rest.split(':');
-    if (parts.length !== 3) return '';
-    const [ivHex, tagHex, dataHex] = parts;
-    const key = deriveAesKey();
-    const decipher = crypto.createDecipheriv(
-      'aes-256-gcm',
-      key,
-      Buffer.from(ivHex, 'hex')
-    );
-    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    const decrypted = Buffer.concat([
-      decipher.update(Buffer.from(dataHex, 'hex')),
-      decipher.final(),
-    ]);
-    return decrypted.toString('utf8').trim();
-  } catch {
-    return '';
-  }
+  const rest = value.slice(ENCRYPTED_PREFIX.length);
+  const parts = rest.split(':');
+  if (parts.length !== 3) return '';
+  const [ivHex, tagHex, dataHex] = parts;
+
+  return (
+    tryDecryptWithKey(deriveAesKey(), ivHex, tagHex, dataHex) ||
+    tryDecryptWithKey(deriveLegacyAesKey(), ivHex, tagHex, dataHex)
+  );
+}
+
+/**
+ * Returns a value encrypted with the current portable key (re-encrypting legacy ciphertext).
+ * Returns '' if the value cannot be decrypted.
+ */
+export function reencryptPortable(stored?: string | null): string {
+  const plain = decryptSecret(stored);
+  return plain ? encryptSecret(plain) : '';
 }
 
 /**

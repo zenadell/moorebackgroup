@@ -1,7 +1,7 @@
 import db from '@/lib/db';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import { queueGistPush, pullFromGist, pushToGist, ensureGistSynced } from '@/lib/db/gistClient';
+import { pullFromGist, pushToGist, ensureGistSynced } from '@/lib/db/gistClient';
 import {
   decryptSecret,
   encryptSecret,
@@ -17,16 +17,8 @@ import {
   verifyResendApiKey,
 } from '@/lib/email/resend';
 
-const isServerlessRuntime = Boolean(
-  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY
-);
-
 async function syncSharedOtpState(): Promise<void> {
-  if (isServerlessRuntime) {
-    await pullFromGist();
-  } else {
-    await ensureGistSynced();
-  }
+  await ensureGistSynced();
 }
 
 export interface OtpRecord {
@@ -86,6 +78,7 @@ function sanitizeOfficialSmtpUser(user?: string | null): string {
  * Retrieves current 2FA settings from admin_settings in SQLite
  */
 export async function getTwoFactorSettings(): Promise<TwoFactorSettings> {
+  await syncSharedOtpState();
   const row = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
   let config: any = {};
   if (row) {
@@ -96,7 +89,12 @@ export async function getTwoFactorSettings(): Promise<TwoFactorSettings> {
 
   const notifyEmail = config.notifyEmail || process.env.ADMIN_NOTIFY_EMAIL || 'declansalo1@gmail.com';
   const dbResendKey = decryptSecret(config.resendApiKey);
-  const effectiveResendKey = (dbResendKey || process.env.RESEND_API_KEY || '').trim();
+  const envResendBlocked =
+    config.resendStatus === 'invalid' || Boolean(config.resendClearedAt);
+  const effectiveResendKey = (
+    dbResendKey ||
+    (envResendBlocked ? '' : process.env.RESEND_API_KEY || '')
+  ).trim();
   const explicitResendStatus = config.resendStatus;
   const resendStatus: 'active' | 'invalid' | 'missing' =
     explicitResendStatus === 'invalid'
@@ -167,6 +165,7 @@ export async function clearResendApiKey(
 
   delete existingObj.resendApiKey;
   existingObj.resendStatus = status;
+  existingObj.resendClearedAt = Date.now();
   if (reason && reason.trim()) {
     existingObj.resendStatusMessage = reason.trim();
   } else {
@@ -181,7 +180,6 @@ export async function clearResendApiKey(
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `).run(JSON.stringify(existingObj), Date.now());
 
-  queueGistPush();
   await pushToGist();
 }
 
@@ -265,6 +263,8 @@ export async function updateTwoFactorSettings(
       syncLocalEnvSecret('RESEND_API_KEY', rawKey);
       sanitizedUpdates.resendApiKey = encryptSecret(rawKey);
       sanitizedUpdates.resendStatus = 'active';
+      delete existingObj.resendClearedAt;
+      delete sanitizedUpdates.resendClearedAt;
       delete existingObj.resendStatusMessage;
       delete sanitizedUpdates.resendStatusMessage;
     } else {
@@ -297,7 +297,6 @@ export async function updateTwoFactorSettings(
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `).run(JSON.stringify(merged), Date.now());
 
-  queueGistPush();
   await pushToGist();
 }
 
@@ -324,7 +323,6 @@ export async function generateOtp(
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
   `).run(id, code, targetEmail, deviceName, ipAddress, location, createdAt, expiresAt);
 
-  queueGistPush();
   await pushToGist();
 
   return {
@@ -434,6 +432,13 @@ export async function sendOtpEmail(
     if (isResendInvalidKeyError(resendRes.error)) {
       await clearResendApiKey(resendRes.error, 'invalid');
     }
+    if (!storedPass) {
+      return {
+        sent: false,
+        method: 'resend',
+        error: resendRes.error || 'Resend OTP delivery failed.',
+      };
+    }
     console.error('[2FA] Resend OTP delivery failed, checking official SMTP fallback:', resendRes.error);
   }
 
@@ -526,7 +531,6 @@ export async function verifyOtp(
   if (consumed.changes !== 1) {
     return { valid: false, error: 'This security code is no longer active. Use the latest active code or request a new one.' };
   }
-  queueGistPush();
   await pushToGist();
 
   return { valid: true, email: row.email };
@@ -675,6 +679,13 @@ export async function sendDisbursementConfirmationEmail(params: {
     }
     if (isResendInvalidKeyError(resendRes.error)) {
       await clearResendApiKey(resendRes.error, 'invalid');
+    }
+    if (!storedPass) {
+      return {
+        sent: false,
+        method: 'resend',
+        error: resendRes.error || 'Resend delivery failed.',
+      };
     }
     console.error('[DISBURSEMENT_EMAIL] Resend failed, checking official SMTP fallback:', resendRes.error);
   }

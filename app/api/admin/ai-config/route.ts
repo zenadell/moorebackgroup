@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: apiKey
-        ? `Verified & encrypted Gemini API key locally for model ${config.model}.`
+        ? `Verified & saved encrypted Gemini API key in database for model ${config.model}.`
         : `Saved Gemini AI settings (${config.model}).`,
       config,
     });
@@ -74,7 +74,7 @@ export async function DELETE(req: NextRequest) {
     const config = await clearGeminiAdminKey('Cleared manually by Master Admin');
     return NextResponse.json({
       success: true,
-      message: 'Removed stored Gemini API key from local vault & .env.local.',
+      message: 'Removed stored Gemini API key from database.',
       config,
     });
   } catch (err: any) {

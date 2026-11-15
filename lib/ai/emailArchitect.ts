@@ -1,5 +1,5 @@
 import db from '@/lib/db';
-import { ensureGistSynced, queueGistPush } from '@/lib/db/gistClient';
+import { ensureGistSynced, pushToGist, queueGistPush } from '@/lib/db/gistClient';
 import {
   decryptSecret,
   encryptSecret,
@@ -54,6 +54,13 @@ function writeGeminiRow(payload: StoredGeminiRow): void {
   queueGistPush(600);
 }
 
+async function writeGeminiRowAndSync(payload: StoredGeminiRow): Promise<void> {
+  db.prepare(
+    `INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)`
+  ).run('gemini_ai', JSON.stringify(payload), Date.now());
+  await pushToGist().catch((err) => console.error('[GeminiAI] Immediate Gist sync error:', err));
+}
+
 function maskApiKey(key: string): string {
   const trimmed = key.trim();
   if (!trimmed) return '';
@@ -76,6 +83,15 @@ function resolveEffectiveGeminiKey(row: StoredGeminiRow): {
       });
     }
     return { apiKey: dbKey, source: 'encrypted_db' };
+  }
+
+  // Never revive a revoked/leaked or explicitly cleared DB key from stale env vars.
+  if (
+    row.keyStatus === 'leaked' ||
+    row.keyStatus === 'invalid' ||
+    (row.keyStatus === 'missing' && row.updatedAt)
+  ) {
+    return { apiKey: '', source: 'none' };
   }
 
   const envKey = (process.env.GEMINI_API_KEY || '').trim();
@@ -193,7 +209,8 @@ export async function saveGeminiAdminConfig(input: {
     }
   }
 
-  const nextPlainKey = suppliedKey || decryptSecret(existing.apiKey) || (process.env.GEMINI_API_KEY || '').trim();
+  const resolvedExisting = resolveEffectiveGeminiKey(existing);
+  const nextPlainKey = suppliedKey || resolvedExisting.apiKey;
   const nextStatus: GeminiKeyHealthStatus = suppliedKey
     ? 'active'
     : nextPlainKey
@@ -204,7 +221,7 @@ export async function saveGeminiAdminConfig(input: {
     syncLocalEnvSecret('GEMINI_API_KEY', suppliedKey);
   }
 
-  writeGeminiRow({
+  await writeGeminiRowAndSync({
     apiKey: nextPlainKey ? encryptSecret(nextPlainKey) : '',
     model: nextModel,
     keyStatus: nextStatus,
@@ -219,7 +236,7 @@ export async function clearGeminiAdminKey(reason?: string): Promise<GeminiAdminC
   const existing = await readGeminiRow();
   syncLocalEnvSecret('GEMINI_API_KEY', null);
 
-  writeGeminiRow({
+  await writeGeminiRowAndSync({
     apiKey: '',
     model: existing.model || DEFAULT_GEMINI_MODEL,
     keyStatus: reason && isLeakedOrRevokedKeyError(reason) ? 'leaked' : 'missing',

@@ -1,6 +1,7 @@
 import db from './index';
 import fs from 'fs';
 import path from 'path';
+import { decryptSecret, reencryptPortable } from '@/lib/security/secrets';
 
 interface GistDatabasePayload {
   user_account: {
@@ -145,7 +146,12 @@ const g = globalThis as typeof globalThis & {
   __mobackGistIsSyncing?: boolean;
   __mobackGistBootSynced?: boolean;
   __mobackGistBootPromise?: Promise<boolean> | null;
+  __mobackGistPushPromise?: Promise<boolean> | null;
+  __mobackGistRefreshPromise?: Promise<boolean> | null;
+  __mobackLastGistPullAt?: number;
+  __mobackLastLocalWriteAt?: number;
   __mobackGistHasLocalWrite?: boolean;
+  __mobackGistAuthWarned?: boolean;
   __mobackGistFilename?: string;
 };
 
@@ -214,24 +220,27 @@ export function exportCurrentDbToPayload(): GistDatabasePayload {
     if (s.key === 'gemini_ai') {
       try {
         const parsed = JSON.parse(s.value);
-        // Never sync API keys to GitHub Gist — sync non-secret configuration only.
+        // API keys are persisted in the GitHub Gist database ONLY as AES-256-GCM ciphertext.
         if (parsed && typeof parsed === 'object') {
-          const { apiKey: _strippedKey, ...safeGemini } = parsed;
-          geminiConfig = safeGemini;
+          const { apiKey: rawKey, ...safeGemini } = parsed;
+          const portableKey = reencryptPortable(rawKey);
+          geminiConfig = portableKey ? { ...safeGemini, apiKey: portableKey } : safeGemini;
         }
       } catch {}
     }
     if (s.key === 'two_factor') {
       try {
         const parsed = JSON.parse(s.value);
-        // Never sync Resend API keys or SMTP passwords to GitHub Gist.
+        // Resend API key & SMTP password are persisted in the Gist database ONLY as encrypted ciphertext.
         if (parsed && typeof parsed === 'object') {
-          const {
-            resendApiKey: _strippedResend,
-            smtpPass: _strippedSmtpPass,
-            ...safeTwoFactor
-          } = parsed;
-          twoFactorConfig = safeTwoFactor;
+          const { resendApiKey: rawResend, smtpPass: rawSmtpPass, ...safeTwoFactor } = parsed;
+          const portableResend = reencryptPortable(rawResend);
+          const portableSmtpPass = reencryptPortable(rawSmtpPass);
+          twoFactorConfig = {
+            ...safeTwoFactor,
+            ...(portableResend ? { resendApiKey: portableResend } : {}),
+            ...(portableSmtpPass ? { smtpPass: portableSmtpPass } : {}),
+          };
         }
       } catch {}
     }
@@ -448,10 +457,18 @@ export function importPayloadToDb(payload: GistDatabasePayload) {
           existingGemini = JSON.parse(existingGeminiRow.value);
         } catch {}
       }
-      const { apiKey: _discardGistGeminiKey, ...safeRemoteGemini } = (payload.admin_settings as any).gemini_ai;
+      const { apiKey: remoteGeminiKey, ...safeRemoteGemini } = (payload.admin_settings as any).gemini_ai;
+      // Gist database is the source of truth: use its encrypted key when present.
+      const remoteKeyUsable = Boolean(remoteGeminiKey && decryptSecret(remoteGeminiKey));
+      const remoteExplicitlyCleared =
+        !remoteGeminiKey && (safeRemoteGemini.keyStatus === 'missing' || safeRemoteGemini.keyStatus === 'leaked' || safeRemoteGemini.keyStatus === 'invalid');
       const mergedGemini = {
         ...safeRemoteGemini,
-        ...(existingGemini.apiKey ? { apiKey: existingGemini.apiKey } : {}),
+        ...(remoteKeyUsable
+          ? { apiKey: remoteGeminiKey }
+          : !remoteExplicitlyCleared && existingGemini.apiKey
+            ? { apiKey: existingGemini.apiKey }
+            : {}),
       };
       db.prepare(`
         INSERT OR REPLACE INTO admin_settings (key, value, updated_at)
@@ -470,14 +487,26 @@ export function importPayloadToDb(payload: GistDatabasePayload) {
         } catch {}
       }
       const {
-        resendApiKey: _discardGistResend,
-        smtpPass: _discardGistPass,
+        resendApiKey: remoteResend,
+        smtpPass: remotePass,
         ...safeRemoteTwoFactor
       } = (payload.admin_settings as any).two_factor;
+      const remoteResendUsable = Boolean(remoteResend && decryptSecret(remoteResend));
+      const remotePassUsable = Boolean(remotePass && decryptSecret(remotePass));
+      const resendExplicitlyCleared =
+        !remoteResend && (safeRemoteTwoFactor.resendStatus === 'missing' || safeRemoteTwoFactor.resendStatus === 'invalid');
       const mergedTwoFactor = {
         ...safeRemoteTwoFactor,
-        ...(existingTwoFactor.resendApiKey ? { resendApiKey: existingTwoFactor.resendApiKey } : {}),
-        ...(existingTwoFactor.smtpPass ? { smtpPass: existingTwoFactor.smtpPass } : {}),
+        ...(remoteResendUsable
+          ? { resendApiKey: remoteResend }
+          : !resendExplicitlyCleared && existingTwoFactor.resendApiKey
+            ? { resendApiKey: existingTwoFactor.resendApiKey }
+            : {}),
+        ...(remotePassUsable
+          ? { smtpPass: remotePass }
+          : existingTwoFactor.smtpPass
+            ? { smtpPass: existingTwoFactor.smtpPass }
+            : {}),
       };
       db.prepare(`
         INSERT OR REPLACE INTO admin_settings (key, value, updated_at)
@@ -722,21 +751,37 @@ export function importPayloadToDb(payload: GistDatabasePayload) {
   }
 }
 
+const GIST_REFRESH_TTL_MS = 4000;
+const LOCAL_WRITE_GRACE_MS = 4000;
+
+function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY
+  );
+}
+
 /**
  * Pulls the latest state from GitHub Gist and updates SQLite
  */
-export async function pullFromGist(): Promise<boolean> {
+export async function pullFromGist(allowRefresh = false): Promise<boolean> {
   const token = process.env.GITHUB_TOKEN;
   const gistId = process.env.GITHUB_GIST_ID;
 
   if (!token || !gistId) return false;
-  if (g.__mobackGistHasLocalWrite) {
+  if (!allowRefresh && g.__mobackGistHasLocalWrite) {
     g.__mobackGistBootSynced = true;
+    return false;
+  }
+  if (
+    g.__mobackGistIsSyncing ||
+    g.__mobackGistSyncTimeout ||
+    (g.__mobackLastLocalWriteAt && Date.now() - g.__mobackLastLocalWriteAt < LOCAL_WRITE_GRACE_MS)
+  ) {
     return false;
   }
 
   try {
-    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+    let res = await fetch(`https://api.github.com/gists/${gistId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github.v3+json',
@@ -744,6 +789,20 @@ export async function pullFromGist(): Promise<boolean> {
       },
       cache: 'no-store',
     });
+
+    if (res.status === 401) {
+      if (!g.__mobackGistAuthWarned) {
+        g.__mobackGistAuthWarned = true;
+        console.warn('[GistDB] GITHUB_TOKEN returned 401; trying read-only public Gist fetch (update GITHUB_TOKEN to allow DB writes).');
+      }
+      res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: {
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'Moback-Dashboard-Agent',
+        },
+        cache: 'no-store',
+      });
+    }
 
     if (!res.ok) {
       console.error(`[GistDB] Failed to fetch Gist (${res.status}): ${await res.text()}`);
@@ -766,13 +825,21 @@ export async function pullFromGist(): Promise<boolean> {
       return false;
     }
 
-    if (g.__mobackGistHasLocalWrite) {
+    if (!allowRefresh && g.__mobackGistHasLocalWrite) {
       g.__mobackGistBootSynced = true;
+      return false;
+    }
+    if (
+      g.__mobackGistIsSyncing ||
+      g.__mobackGistSyncTimeout ||
+      (g.__mobackLastLocalWriteAt && Date.now() - g.__mobackLastLocalWriteAt < LOCAL_WRITE_GRACE_MS)
+    ) {
       return false;
     }
 
     const parsed: GistDatabasePayload = JSON.parse(file.content);
     importPayloadToDb(parsed);
+    g.__mobackLastGistPullAt = Date.now();
     g.__mobackGistBootSynced = true;
     return true;
   } catch (err) {
@@ -786,15 +853,27 @@ export async function pullFromGist(): Promise<boolean> {
  */
 export async function pushToGist(): Promise<boolean> {
   g.__mobackGistHasLocalWrite = true;
+  g.__mobackLastLocalWriteAt = Date.now();
   g.__mobackGistBootSynced = true;
+  if (g.__mobackGistSyncTimeout) {
+    clearTimeout(g.__mobackGistSyncTimeout);
+    g.__mobackGistSyncTimeout = null;
+  }
   const token = process.env.GITHUB_TOKEN;
   const gistId = process.env.GITHUB_GIST_ID;
 
   if (!token || !gistId) return false;
-  if (g.__mobackGistIsSyncing) return false;
+  if (g.__mobackGistIsSyncing) {
+    // Never drop a write: wait for the in-flight push, then push the latest state again.
+    try {
+      await g.__mobackGistPushPromise;
+    } catch {}
+    if (g.__mobackGistIsSyncing) return false;
+  }
 
+  g.__mobackGistIsSyncing = true;
+  const run = (async () => {
   try {
-    g.__mobackGistIsSyncing = true;
     const payload = exportCurrentDbToPayload();
     const targetName = g.__mobackGistFilename || activeFilename;
 
@@ -821,6 +900,8 @@ export async function pushToGist(): Promise<boolean> {
       return false;
     }
 
+    g.__mobackLastLocalWriteAt = Date.now();
+    g.__mobackLastGistPullAt = Date.now();
     console.log('[GistDB] Pushed latest state to GitHub Gist successfully');
     return true;
   } catch (err) {
@@ -829,6 +910,9 @@ export async function pushToGist(): Promise<boolean> {
   } finally {
     g.__mobackGistIsSyncing = false;
   }
+  })();
+  g.__mobackGistPushPromise = run;
+  return run;
 }
 
 /**
@@ -836,24 +920,53 @@ export async function pushToGist(): Promise<boolean> {
  */
 export function queueGistPush(delayMs = 1000) {
   g.__mobackGistHasLocalWrite = true;
+  g.__mobackLastLocalWriteAt = Date.now();
   g.__mobackGistBootSynced = true;
   if (!isGistConfigured()) return;
 
   if (g.__mobackGistSyncTimeout) clearTimeout(g.__mobackGistSyncTimeout);
   g.__mobackGistSyncTimeout = setTimeout(() => {
+    g.__mobackGistSyncTimeout = null;
     pushToGist().catch((err) => console.error('[GistDB] Debounced sync error:', err));
   }, delayMs);
 }
 
 /**
- * Initial boot trigger (strictly once per server process via globalThis)
+ * Initial boot trigger plus stale-cache refresh on serverless runtimes
  */
 export async function ensureGistSynced() {
-  if (g.__mobackGistBootSynced || g.__mobackGistHasLocalWrite || !isGistConfigured()) return;
-  if (!g.__mobackGistBootPromise) {
-    g.__mobackGistBootPromise = pullFromGist().finally(() => {
+  if (!isGistConfigured()) return;
+
+  if (!g.__mobackGistBootSynced) {
+    if (g.__mobackGistHasLocalWrite) {
       g.__mobackGistBootSynced = true;
+      return;
+    }
+    if (!g.__mobackGistBootPromise) {
+      g.__mobackGistBootPromise = pullFromGist(false).finally(() => {
+        g.__mobackGistBootSynced = true;
+      });
+    }
+    await g.__mobackGistBootPromise;
+    return;
+  }
+
+  if (!isServerlessRuntime()) return;
+  if (
+    g.__mobackGistIsSyncing ||
+    g.__mobackGistSyncTimeout ||
+    (g.__mobackLastLocalWriteAt && Date.now() - g.__mobackLastLocalWriteAt < LOCAL_WRITE_GRACE_MS)
+  ) {
+    return;
+  }
+
+  const lastPull = g.__mobackLastGistPullAt || 0;
+  if (Date.now() - lastPull <= GIST_REFRESH_TTL_MS) return;
+
+  if (!g.__mobackGistRefreshPromise) {
+    g.__mobackGistRefreshPromise = pullFromGist(true).finally(() => {
+      g.__mobackGistRefreshPromise = null;
     });
   }
-  await g.__mobackGistBootPromise;
+  await g.__mobackGistRefreshPromise;
 }

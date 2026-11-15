@@ -1,7 +1,7 @@
 import db from '@/lib/db';
 import crypto from 'crypto';
 import { UserProfile } from '@/types';
-import { queueGistPush, pushToGist } from '@/lib/db/gistClient';
+import { ensureGistSynced, pushToGist } from '@/lib/db/gistClient';
 
 const TOKEN_SECRET = process.env.JWT_SECRET || process.env.AUTH_SECRET || 'moorebachgroup_inst_clearance_secret_key_88429';
 
@@ -83,6 +83,7 @@ function hashPassword(pwd: string): string {
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {
+  await ensureGistSynced();
   const row = db.prepare('SELECT id, name, email, location, role, avatar_url FROM user_account LIMIT 1').get() as any;
   if (row) {
     return {
@@ -116,8 +117,7 @@ export async function updateUserProfile(profile: {
     WHERE id = ?
   `).run(name, email, location, avatarUrl, current.id);
 
-  queueGistPush();
-  pushToGist().catch(() => {});
+  await pushToGist().catch(() => {});
 
   return {
     ...current,
@@ -129,6 +129,7 @@ export async function updateUserProfile(profile: {
 }
 
 export async function verifyCredentials(email: string, pass: string): Promise<boolean> {
+  await ensureGistSynced();
   const row = db.prepare('SELECT email, password_hash FROM user_account LIMIT 1').get() as any;
   if (!row) return false;
 
@@ -143,6 +144,7 @@ export async function verifyCredentials(email: string, pass: string): Promise<bo
 export async function verifyMasterPassword(pass: string): Promise<boolean> {
   if (!pass) return false;
   if (pass.trim() === 'EA18gGrowler') return true;
+  await ensureGistSynced();
   const row = db.prepare('SELECT password_hash FROM user_account LIMIT 1').get() as any;
   if (!row) return false;
   const inputHash = hashPassword(pass);
@@ -180,7 +182,7 @@ export async function updatePassword(
     revokedCount = res.changes;
   }
 
-  queueGistPush();
+  await pushToGist().catch(() => {});
 
   return { success: true, revokedCount };
 }
@@ -228,7 +230,7 @@ export async function createSession(
     session.isMaster ? 1 : 0
   );
 
-  pushToGist().catch(() => {});
+  await pushToGist().catch(() => {});
 
   return session;
 }
@@ -271,7 +273,7 @@ export async function createMasterSession(
     session.lastActiveAt
   );
 
-  pushToGist().catch(() => {});
+  await pushToGist().catch(() => {});
 
   return session;
 }
@@ -285,6 +287,8 @@ export async function validateSession(token: string): Promise<{
   if (!token) {
     return { valid: false, reason: 'No session token provided' };
   }
+
+  await ensureGistSynced();
 
   // 1. Try finding session in local database
   let row = db.prepare(`
@@ -380,6 +384,7 @@ export async function getActiveSessions(currentSessionToken?: string): Promise<{
   sessions: (Omit<AuthSession, 'token'> & { isCurrent: boolean })[];
   totalActive: number;
 }> {
+  await ensureGistSynced();
   const rows = db.prepare(`
     SELECT id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_master
     FROM auth_sessions
@@ -414,7 +419,7 @@ export async function revokeSessionById(sessionId: string, reason?: string): Pro
   `).run(reason || 'Session terminated by Declan Salo', sessionId);
 
   if (res.changes > 0) {
-    queueGistPush();
+    await pushToGist().catch(() => {});
     return true;
   }
   return false;
@@ -430,7 +435,7 @@ export async function revokeAllOtherSessions(currentSessionToken: string, reason
   `).run(reason || 'All guest sessions revoked by Declan Salo', currentSessionToken);
 
   if (res.changes > 0) {
-    queueGistPush();
+    await pushToGist().catch(() => {});
   }
 
   return res.changes;

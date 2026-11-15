@@ -345,7 +345,7 @@ export function EmailComposerTab({
           type: 'success',
           message:
             data.message ||
-            `Verified & encrypted Gemini API key locally for model ${data.config.model}.`,
+            `Verified & saved encrypted Gemini API key in database for model ${data.config.model}.`,
         });
         setShowAiKeyPanel(false);
       } else {
@@ -805,8 +805,8 @@ export function EmailComposerTab({
                 </strong>
               </div>
               <p style={{ fontSize: '12px', color: '#4b5563', margin: '3px 0 0' }}>
-                AES-256-GCM encrypted locally &amp; saved to gitignored <code>.env.local</code> —{' '}
-                <strong>never uploaded to GitHub Gist</strong> so keys cannot be flagged as leaked.
+                AES-256-GCM encrypted &amp; stored in the database (SQLite &amp; GitHub Gist) —{' '}
+                <strong>synced automatically across localhost and cloud</strong>.
               </p>
             </div>
             {geminiConfig?.configured && geminiConfig?.status !== 'leaked' && (

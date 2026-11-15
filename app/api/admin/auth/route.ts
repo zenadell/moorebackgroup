@@ -86,20 +86,23 @@ export async function POST(req: NextRequest) {
     const user = await getUserProfile();
     if (!user) return NextResponse.json({ success: false, authorized: false, error: 'Profile record is not available' }, { status: 503 });
 
+    const isHttps =
+      req.headers.get('x-forwarded-proto') === 'https' || req.nextUrl.protocol === 'https:';
+
     const response = NextResponse.json({
       success: true,
       authorized: true,
-      token: session.token,
       sessionId: session.id,
       isMaster: true,
       user,
       message: 'Master Security Terminal Unlocked',
     });
 
-    // Dedicated admin cookie (isolated from user dashboard session cookie)
+    // Dedicated database-backed HttpOnly admin cookie (isolated from client storage)
     response.cookies.set('salo_master_token', session.token, {
       path: '/',
-      httpOnly: false,
+      httpOnly: true,
+      secure: isHttps,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
@@ -113,6 +116,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const isHttps =
+      req.headers.get('x-forwarded-proto') === 'https' || req.nextUrl.protocol === 'https:';
     const auth = await authorizeMasterRequest(req);
     if (auth.ok && auth.sessionId) {
       await revokeSession(auth.sessionId, 'Locked manually by Master Admin');
@@ -125,7 +130,8 @@ export async function DELETE(req: NextRequest) {
     });
     response.cookies.set('salo_master_token', '', {
       path: '/',
-      httpOnly: false,
+      httpOnly: true,
+      secure: isHttps,
       sameSite: 'lax',
       maxAge: 0,
     });

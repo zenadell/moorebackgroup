@@ -415,22 +415,20 @@ export default function SaloAdminPortal() {
     ]
   );
 
-  // Restore existing master session cookie and active tab across page reloads & navigation
+  // Restore existing DB-backed master session cookie and URL hash tab across page reloads
   useEffect(() => {
     let active = true;
     try {
-      const savedTab = sessionStorage.getItem('salo_active_tab') as AdminTabId | null;
-      if (savedTab && savedTab in TAB_META) {
-        setActiveTab(savedTab);
+      const hashTab = window.location.hash.replace(/^#/, '') as AdminTabId | '';
+      if (hashTab && hashTab in TAB_META) {
+        setActiveTab(hashTab);
       }
     } catch {}
     (async () => {
       try {
-        const storedToken =
-          typeof window !== 'undefined' ? sessionStorage.getItem('salo_master_token') : null;
         const res = await fetch('/api/admin/auth', {
           cache: 'no-store',
-          headers: storedToken ? { 'x-master-token': storedToken } : undefined,
+          credentials: 'same-origin',
         });
         const data = await res.json();
         if (active && data.success && data.authorized) {
@@ -447,11 +445,13 @@ export default function SaloAdminPortal() {
     };
   }, [syncAllAdminData]);
 
-  // Persist active admin tab across refreshes
+  // Reflect active admin tab in URL hash instead of sessionStorage
   useEffect(() => {
     if (isCheckingSession) return;
     try {
-      sessionStorage.setItem('salo_active_tab', activeTab);
+      if (window.location.hash !== `#${activeTab}`) {
+        window.history.replaceState(null, '', `#${activeTab}`);
+      }
     } catch {}
   }, [activeTab, isCheckingSession]);
 
@@ -462,16 +462,12 @@ export default function SaloAdminPortal() {
     try {
       const res = await fetch('/api/admin/auth', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: passwordInput }),
       });
       const data = await res.json();
       if (data.success && data.authorized) {
-        if (data.token && typeof window !== 'undefined') {
-          try {
-            sessionStorage.setItem('salo_master_token', data.token);
-          } catch {}
-        }
         setMasterKey(passwordInput);
         setIsAuthorized(true);
         syncAllAdminData(passwordInput);
@@ -775,8 +771,8 @@ export default function SaloAdminPortal() {
         setTwoFactorStatusMsg({
           type: 'success',
           message: resendApiKeyInput.trim()
-            ? 'Verified Resend API key live & saved official MooreBach Group mail settings.'
-            : 'Official MooreBach Group mail & 2FA settings saved (secrets encrypted locally).',
+            ? 'Verified Resend API key live & saved encrypted into database (SQLite & GitHub Gist).'
+            : 'Official MooreBach Group mail & 2FA settings saved & encrypted in database.',
         });
         loadEmailStudio(masterKey);
       } else {
@@ -970,10 +966,7 @@ export default function SaloAdminPortal() {
 
   const handleLockTerminal = async () => {
     try {
-      await fetch('/api/admin/auth', { method: 'DELETE' });
-    } catch {}
-    try {
-      sessionStorage.removeItem('salo_master_token');
+      await fetch('/api/admin/auth', { method: 'DELETE', credentials: 'same-origin' });
     } catch {}
     setIsAuthorized(false);
     setMasterKey('');

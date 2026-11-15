@@ -70,6 +70,9 @@ export function resolveResendApiKey(): string {
       if (decrypted) {
         return decrypted;
       }
+      if (parsed?.resendStatus === 'invalid' || parsed?.resendClearedAt) {
+        return '';
+      }
     }
   } catch {}
   return (process.env.RESEND_API_KEY || '').trim();
