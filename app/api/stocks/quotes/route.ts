@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 interface StockQuoteResult {
   price: number;
   change: number;
@@ -50,22 +52,26 @@ function getMarketStatus(): { status: MarketStatus; label: string; lastTradeDate
   return { status: 'closed', label: 'Markets Closed', lastTradeDate };
 }
 
-// In-memory cache to stay well within rate limits and ensure sub-second response
+// Short in-memory cache to stay well within upstream rate limits while avoiding stacked Next.js caching
 let cache: { data: Record<string, StockQuoteResult>; timestamp: number; marketStatus: ReturnType<typeof getMarketStatus> } | null = null;
-const CACHE_TTL_MS = 20_000; // 20 seconds cache
+const CACHE_TTL_MS = 15_000; // 15 seconds cache
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, no-cache, must-revalidate' };
 
 export async function GET() {
   const now = Date.now();
   const marketStatus = getMarketStatus();
 
   if (cache && now - cache.timestamp < CACHE_TTL_MS) {
-    return NextResponse.json({
-      success: true,
-      cached: true,
-      quotes: cache.data,
-      marketStatus,
-      timestamp: new Date(cache.timestamp).toISOString(),
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        cached: true,
+        quotes: cache.data,
+        marketStatus,
+        timestamp: new Date(cache.timestamp).toISOString(),
+      },
+      { headers: NO_STORE_HEADERS }
+    );
   }
 
   const quotes: Record<string, StockQuoteResult> = {};
@@ -83,7 +89,8 @@ export async function GET() {
           'APCA-API-KEY-ID': alpacaKey,
           'APCA-API-SECRET-KEY': alpacaSecret,
         },
-        next: { revalidate: 20 },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(4000),
       });
 
       if (res.ok) {
@@ -136,7 +143,7 @@ export async function GET() {
       finnhubTickers.map(async ({ id, symbol }) => {
         try {
           const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`;
-          const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+          const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(3000) });
           if (res.ok) {
             const data = await res.json();
             if (data.c && data.c > 0) {
@@ -194,12 +201,15 @@ export async function GET() {
     cache = { data: quotes, timestamp: now, marketStatus };
   }
 
-  return NextResponse.json({
-    success: true,
-    cached: false,
-    quotes,
-    marketStatus,
-    totalCount: Object.keys(quotes).length,
-    timestamp: new Date().toISOString(),
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      cached: false,
+      quotes,
+      marketStatus,
+      totalCount: Object.keys(quotes).length,
+      timestamp: new Date().toISOString(),
+    },
+    { headers: NO_STORE_HEADERS }
+  );
 }

@@ -200,13 +200,13 @@ function DashboardContent() {
 
     async function syncQuotes() {
       try {
-        const res = await fetch('/api/stocks/quotes');
+        const res = await fetch('/api/stocks/quotes', { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
         if (data.success && data.quotes && Object.keys(data.quotes).length > 0 && isMounted) {
           setLiveQuotes(data.quotes);
           setIsLiveActive(true);
-          setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
           if (data.marketStatus) {
             setMarketStatus(data.marketStatus);
           }
@@ -217,7 +217,7 @@ function DashboardContent() {
     }
 
     syncQuotes();
-    const interval = setInterval(syncQuotes, 30_000); // 30-sec refresh interval
+    const interval = setInterval(syncQuotes, 20_000); // 20-sec refresh interval (>15s server cache TTL)
     return () => {
       isMounted = false;
       clearInterval(interval);
