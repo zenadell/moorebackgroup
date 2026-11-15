@@ -1,43 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  validateSession,
   revokeSession,
   revokeAllOtherSessions,
 } from '@/lib/auth/serverStore';
+import { authorizeMasterRequest } from '@/lib/auth/masterAuth';
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.replace(/^Bearer\s+/i, '');
-
-    if (!token) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const auth = await validateSession(token);
-    if (!auth.valid) {
+    const auth = await authorizeMasterRequest(
+      req,
+      'Access denied: Only Declan Salo (Master Account) has permission to terminate sessions.'
+    );
+    if (!auth.ok) {
       return NextResponse.json(
-        { success: false, error: auth.reason || 'Session expired or revoked' },
-        { status: 401 }
+        { success: false, error: auth.error || 'Unauthorized' },
+        { status: auth.status }
       );
     }
 
-    if (!auth.session?.isMaster) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Access denied: Only Declan Salo (Master Account) has permission to terminate sessions.',
-        },
-        { status: 403 }
-      );
-    }
-
+    const token = auth.token || req.cookies.get('salo_master_token')?.value || '';
     const body = await req.json();
-    const { sessionId, allOthers, reason } = body;
+    const { sessionId, allOthers, revokeAllOthers, reason } = body;
 
     const revocationReason = reason || 'Session terminated by account owner (Declan Salo)';
 
-    if (allOthers) {
+    if (allOthers || revokeAllOthers) {
       const revokedCount = await revokeAllOtherSessions(token, revocationReason);
       return NextResponse.json({
         success: true,
@@ -47,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (sessionId) {
-      if (sessionId === auth.session?.id) {
+      if (auth.sessionId && sessionId === auth.sessionId) {
         return NextResponse.json(
           {
             success: false,

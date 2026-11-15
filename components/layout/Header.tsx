@@ -482,7 +482,7 @@ export function Header({
                     }}
                   >
                     <SettingsIcon style={{ width: '14px', height: '14px', color: '#64748b' }} />
-                    Portfolio Settings
+                    Investor Profile &amp; Settings
                   </button>
                 )}
                 <button

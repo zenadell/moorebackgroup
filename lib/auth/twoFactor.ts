@@ -1,7 +1,33 @@
 import db from '@/lib/db';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import { queueGistPush, pullFromGist, pushToGist } from '@/lib/db/gistClient';
+import { queueGistPush, pullFromGist, pushToGist, ensureGistSynced } from '@/lib/db/gistClient';
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncryptedSecret,
+  syncLocalEnvSecret,
+} from '@/lib/security/secrets';
+import {
+  isResendInvalidKeyError,
+  maskResendKey,
+  resolveResendApiKey,
+  sanitizeOfficialSenderEmail,
+  sendViaResend,
+  verifyResendApiKey,
+} from '@/lib/email/resend';
+
+const isServerlessRuntime = Boolean(
+  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY
+);
+
+async function syncSharedOtpState(): Promise<void> {
+  if (isServerlessRuntime) {
+    await pullFromGist();
+  } else {
+    await ensureGistSynced();
+  }
+}
 
 export interface OtpRecord {
   id: string;
@@ -18,11 +44,42 @@ export interface OtpRecord {
 export interface TwoFactorSettings {
   enabled: boolean;
   notifyEmail: string;
+  resendConfigured?: boolean;
+  maskedResendKey?: string;
+  resendStatus?: 'active' | 'invalid' | 'missing';
+  resendStatusMessage?: string;
   smtpConfigured: boolean;
+  smtpPassSet?: boolean;
   smtpHost?: string;
   smtpPort?: number;
   smtpUser?: string;
   smtpFrom?: string;
+}
+
+function isPersonalOrGmailSmtp(host?: string | null, user?: string | null): boolean {
+  const h = (host || '').toLowerCase();
+  const u = (user || '').toLowerCase();
+  return (
+    h.includes('gmail') ||
+    u.includes('@gmail.com') ||
+    u.includes('declansalo')
+  );
+}
+
+function sanitizeOfficialSmtpHost(host?: string | null): string {
+  const h = (host || '').trim();
+  if (!h || h.toLowerCase().includes('gmail')) {
+    return 'mail.privateemail.com';
+  }
+  return h;
+}
+
+function sanitizeOfficialSmtpUser(user?: string | null): string {
+  const u = (user || '').trim();
+  if (!u || u.toLowerCase().includes('@gmail.com') || u.toLowerCase().includes('declansalo')) {
+    return 'support@moorebachgroup.com';
+  }
+  return u;
 }
 
 /**
@@ -38,26 +95,68 @@ export async function getTwoFactorSettings(): Promise<TwoFactorSettings> {
   }
 
   const notifyEmail = config.notifyEmail || process.env.ADMIN_NOTIFY_EMAIL || 'declansalo1@gmail.com';
-  const smtpHost = config.smtpHost || process.env.SMTP_HOST || '';
-  const smtpUser = config.smtpUser || process.env.SMTP_USER || '';
-  const smtpPass = config.smtpPass || process.env.SMTP_PASS || '';
+  const dbResendKey = decryptSecret(config.resendApiKey);
+  const effectiveResendKey = (dbResendKey || process.env.RESEND_API_KEY || '').trim();
+  const explicitResendStatus = config.resendStatus;
+  const resendStatus: 'active' | 'invalid' | 'missing' =
+    explicitResendStatus === 'invalid'
+      ? 'invalid'
+      : effectiveResendKey
+        ? 'active'
+        : 'missing';
+  const resendConfigured = Boolean(effectiveResendKey) && resendStatus === 'active';
+  const resendStatusMessage =
+    typeof config.resendStatusMessage === 'string' && config.resendStatusMessage.trim()
+      ? config.resendStatusMessage.trim()
+      : resendStatus === 'invalid'
+        ? 'Previous Resend API key was rejected ("API key is invalid"). Generate a new Sending-Access key at resend.com/api-keys and click Verify & Save.'
+        : undefined;
+
+  const rawSmtpHost = config.smtpHost || process.env.SMTP_HOST || '';
+  const rawSmtpUser = config.smtpUser || process.env.SMTP_USER || '';
+  const isLegacyPersonalSmtp = isPersonalOrGmailSmtp(rawSmtpHost, rawSmtpUser);
+
+  const smtpHost = sanitizeOfficialSmtpHost(rawSmtpHost);
+  const smtpUser = sanitizeOfficialSmtpUser(rawSmtpUser);
+  const dbSmtpPass = isLegacyPersonalSmtp ? '' : decryptSecret(config.smtpPass);
+  const smtpPass = dbSmtpPass || (isLegacyPersonalSmtp ? '' : (process.env.SMTP_PASS || '').trim());
+  const rawPort = config.smtpPort || (process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 465);
+  const smtpPort = isLegacyPersonalSmtp && Number(rawPort) === 587 ? 465 : Number(rawPort || 465);
+
+  const rawSmtpFrom =
+    config.smtpFrom ||
+    process.env.SMTP_FROM ||
+    'MooreBach Group Security <support@moorebachgroup.com>';
+  const safeFromAddress = sanitizeOfficialSenderEmail(rawSmtpFrom, 'support@moorebachgroup.com');
+  const safeSmtpFrom =
+    rawSmtpFrom.toLowerCase().includes('declansalo') ||
+    rawSmtpFrom.toLowerCase().includes('@gmail.com')
+      ? `MooreBach Group Security <${safeFromAddress}>`
+      : rawSmtpFrom;
 
   return {
     enabled: config.enabled !== undefined ? Boolean(config.enabled) : true,
     notifyEmail,
-    smtpConfigured: Boolean(smtpHost && smtpUser && smtpPass),
-    smtpHost: smtpHost || undefined,
-    smtpPort: config.smtpPort || (process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587),
-    smtpUser: smtpUser || undefined,
-    smtpFrom: config.smtpFrom || process.env.SMTP_FROM || 'Orion Security <security@orion-terminal.com>',
+    resendConfigured,
+    maskedResendKey: resendConfigured ? maskResendKey(effectiveResendKey) : undefined,
+    resendStatus,
+    resendStatusMessage,
+    smtpConfigured: Boolean(!isLegacyPersonalSmtp && smtpHost && smtpUser && smtpPass),
+    smtpPassSet: Boolean(!isLegacyPersonalSmtp && smtpHost && smtpUser && smtpPass),
+    smtpHost,
+    smtpPort,
+    smtpUser,
+    smtpFrom: safeSmtpFrom,
   };
 }
 
 /**
- * Updates 2FA settings in admin_settings
+ * Clears any stored Resend API key and updates resend status (`invalid` on send failure, `missing` on manual removal).
  */
-export async function updateTwoFactorSettings(updates: Partial<TwoFactorSettings & { smtpPass?: string }>): Promise<void> {
-  const current = await getTwoFactorSettings();
+export async function clearResendApiKey(
+  reason?: string,
+  status: 'invalid' | 'missing' = 'missing'
+): Promise<void> {
   const existingRow = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
   let existingObj: any = {};
   if (existingRow) {
@@ -66,9 +165,130 @@ export async function updateTwoFactorSettings(updates: Partial<TwoFactorSettings
     } catch {}
   }
 
+  delete existingObj.resendApiKey;
+  existingObj.resendStatus = status;
+  if (reason && reason.trim()) {
+    existingObj.resendStatusMessage = reason.trim();
+  } else {
+    delete existingObj.resendStatusMessage;
+  }
+
+  syncLocalEnvSecret('RESEND_API_KEY', null);
+
+  db.prepare(`
+    INSERT INTO admin_settings (key, value, updated_at)
+    VALUES ('two_factor', ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(JSON.stringify(existingObj), Date.now());
+
+  queueGistPush();
+  await pushToGist();
+}
+
+/**
+ * Updates 2FA settings in admin_settings
+ */
+export async function updateTwoFactorSettings(
+  updates: Partial<TwoFactorSettings & { smtpPass?: string; resendApiKey?: string }>
+): Promise<void> {
+  await getTwoFactorSettings();
+  const existingRow = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
+  let existingObj: any = {};
+  if (existingRow) {
+    try {
+      existingObj = JSON.parse(existingRow.value);
+    } catch {}
+  }
+
+  const sanitizedUpdates: Record<string, unknown> = Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined)
+  );
+
+  // Block personal Gmail or client identities in outbound SMTP fields
+  if (typeof sanitizedUpdates.smtpHost === 'string') {
+    const h = sanitizedUpdates.smtpHost.trim().toLowerCase();
+    if (h.includes('gmail')) {
+      throw new Error(
+        'Personal Gmail SMTP (smtp.gmail.com) is disabled. Outbound emails must use Resend or official mail.privateemail.com.'
+      );
+    }
+    sanitizedUpdates.smtpHost = h ? sanitizedUpdates.smtpHost.trim() : 'mail.privateemail.com';
+  }
+  if (typeof sanitizedUpdates.smtpUser === 'string') {
+    const u = sanitizedUpdates.smtpUser.trim().toLowerCase();
+    if (u.includes('@gmail.com') || u.includes('declansalo')) {
+      throw new Error(
+        'Outbound SMTP username must be an official @moorebachgroup.com email (e.g., support@moorebachgroup.com), never a personal address.'
+      );
+    }
+    sanitizedUpdates.smtpUser = u ? sanitizedUpdates.smtpUser.trim() : 'support@moorebachgroup.com';
+  }
+  if (typeof sanitizedUpdates.smtpFrom === 'string') {
+    const safeAddr = sanitizeOfficialSenderEmail(sanitizedUpdates.smtpFrom, 'support@moorebachgroup.com');
+    const rawFromLower = sanitizedUpdates.smtpFrom.toLowerCase();
+    sanitizedUpdates.smtpFrom =
+      rawFromLower.includes('declansalo') || rawFromLower.includes('@gmail.com')
+        ? `MooreBach Group Treasury <${safeAddr}>`
+        : sanitizedUpdates.smtpFrom.trim();
+  }
+
+  // Purge any legacy personal/Gmail SMTP values from existingObj so they never persist into DB or Gist
+  if (isPersonalOrGmailSmtp(existingObj.smtpHost, existingObj.smtpUser)) {
+    existingObj.smtpHost = sanitizeOfficialSmtpHost(existingObj.smtpHost);
+    existingObj.smtpUser = sanitizeOfficialSmtpUser(existingObj.smtpUser);
+    if (Number(existingObj.smtpPort) === 587) {
+      existingObj.smtpPort = 465;
+    }
+    if (!sanitizedUpdates.smtpPass) {
+      delete existingObj.smtpPass;
+    }
+  }
+  if (
+    typeof existingObj.smtpFrom === 'string' &&
+    (existingObj.smtpFrom.toLowerCase().includes('declansalo') ||
+      existingObj.smtpFrom.toLowerCase().includes('@gmail.com'))
+  ) {
+    existingObj.smtpFrom = `MooreBach Group Treasury <support@moorebachgroup.com>`;
+  }
+
+  // Verify any new Resend API key live BEFORE saving; encrypt secrets at rest in SQLite & .env.local
+  if (typeof sanitizedUpdates.resendApiKey === 'string') {
+    const rawKey = sanitizedUpdates.resendApiKey.trim();
+    if (rawKey) {
+      const check = await verifyResendApiKey(rawKey);
+      if (!check.ok) {
+        throw new Error(
+          check.message ||
+            'Resend rejected this API key. Generate a fresh Sending-Access key at resend.com/api-keys.'
+        );
+      }
+      syncLocalEnvSecret('RESEND_API_KEY', rawKey);
+      sanitizedUpdates.resendApiKey = encryptSecret(rawKey);
+      sanitizedUpdates.resendStatus = 'active';
+      delete existingObj.resendStatusMessage;
+      delete sanitizedUpdates.resendStatusMessage;
+    } else {
+      delete sanitizedUpdates.resendApiKey;
+    }
+  } else if (existingObj.resendApiKey && !isEncryptedSecret(existingObj.resendApiKey)) {
+    existingObj.resendApiKey = encryptSecret(existingObj.resendApiKey);
+  }
+
+  if (typeof sanitizedUpdates.smtpPass === 'string') {
+    const rawPass = sanitizedUpdates.smtpPass.trim();
+    if (rawPass) {
+      syncLocalEnvSecret('SMTP_PASS', rawPass);
+      sanitizedUpdates.smtpPass = encryptSecret(rawPass);
+    } else {
+      delete sanitizedUpdates.smtpPass;
+    }
+  } else if (existingObj.smtpPass && !isEncryptedSecret(existingObj.smtpPass)) {
+    existingObj.smtpPass = encryptSecret(existingObj.smtpPass);
+  }
+
   const merged = {
     ...existingObj,
-    ...updates,
+    ...sanitizedUpdates,
   };
 
   db.prepare(`
@@ -131,15 +351,18 @@ export async function sendOtpEmail(
   if (existingRow) {
     try {
       const obj = JSON.parse(existingRow.value);
-      storedPass = obj.smtpPass || '';
+      storedPass = decryptSecret(obj.smtpPass);
     } catch {}
   }
 
-  const host = settings.smtpHost || process.env.SMTP_HOST;
-  const user = settings.smtpUser || process.env.SMTP_USER;
-  const pass = storedPass || process.env.SMTP_PASS;
-  const port = settings.smtpPort || (process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587);
-  const from = settings.smtpFrom || process.env.SMTP_FROM || `Orion Security <${user || 'security@orion-terminal.com'}>`;
+  const host = settings.smtpHost || 'mail.privateemail.com';
+  const user = settings.smtpUser || 'support@moorebachgroup.com';
+  const pass = settings.smtpConfigured ? (storedPass || process.env.SMTP_PASS || '').trim() : '';
+  const port = settings.smtpPort || 465;
+  const from =
+    settings.smtpFrom ||
+    process.env.SMTP_FROM ||
+    'MooreBach Group Security <support@moorebachgroup.com>';
 
   // HTML email body
   const htmlBody = `
@@ -189,38 +412,50 @@ export async function sendOtpEmail(
     </html>
   `;
 
-  if (host && user && pass) {
+  const senderEmail = sanitizeOfficialSenderEmail(from, 'support@moorebachgroup.com');
+  const otpSubject = `[Security Code: ${code}] MooreBach Group Sign-In Authorization`;
+  const otpText = `Your MooreBach Group Portfolio verification code is: ${code}. It expires in 10 minutes. Requested from ${deviceName} (${ipAddress}).`;
+
+  const resendApiKey = settings.resendStatus === 'invalid' ? '' : resolveResendApiKey();
+  if (resendApiKey) {
+    const resendRes = await sendViaResend({
+      apiKey: resendApiKey,
+      from: `MooreBach Group Security <${senderEmail}>`,
+      to: targetEmail,
+      replyTo: 'support@moorebachgroup.com',
+      subject: otpSubject,
+      text: otpText,
+      html: htmlBody,
+      headers: { 'X-Priority': '1' },
+    });
+    if (resendRes.success) {
+      return { sent: true, method: 'resend' };
+    }
+    if (isResendInvalidKeyError(resendRes.error)) {
+      await clearResendApiKey(resendRes.error, 'invalid');
+    }
+    console.error('[2FA] Resend OTP delivery failed, checking official SMTP fallback:', resendRes.error);
+  }
+
+  if (host && user && pass && !isPersonalOrGmailSmtp(host, user)) {
     try {
-      const isGmail = host.toLowerCase().includes('gmail') || user.toLowerCase().includes('@gmail.com');
-      const cleanPass = isGmail ? pass.replace(/\s+/g, '') : pass;
+      const transporter = nodemailer.createTransport({
+        host,
+        port: Number(port),
+        secure: Number(port) === 465,
+        auth: {
+          user,
+          pass,
+        },
+      });
 
-      const transporter = isGmail
-        ? nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-              user,
-              pass: cleanPass,
-            },
-          })
-        : nodemailer.createTransport({
-            host,
-            port: Number(port),
-            secure: Number(port) === 465,
-            auth: {
-              user,
-              pass: cleanPass,
-            },
-          });
-
-      // Gmail suppresses inbox delivery when from === to (same address).
-      // Use a "+noreply" alias so Gmail treats it as a distinct sender.
-      const smtpFrom = `MooreBach Group Security <${user!.replace('@', '+noreply@')}>`;
+      const smtpFrom = `"MooreBach Group Security" <${senderEmail}>`;
 
       await transporter.sendMail({
         from: smtpFrom,
         to: targetEmail,
-        subject: `[Security Code: ${code}] MooreBach Group Sign-In Authorization`,
-        text: `Your MooreBach Group Portfolio verification code is: ${code}. It expires in 10 minutes. Requested from ${deviceName} (${ipAddress}).`,
+        subject: otpSubject,
+        text: otpText,
         html: htmlBody,
         headers: {
           'X-Priority': '1',
@@ -259,7 +494,7 @@ export async function verifyOtp(
 
   // Serverless requests can use different ephemeral SQLite instances. Refresh shared
   // OTP state before lookup so a valid code created by another instance is visible.
-  await pullFromGist();
+  await syncSharedOtpState();
 
   const row = db.prepare(`
     SELECT id, code, email, expires_at, used
@@ -298,10 +533,193 @@ export async function verifyOtp(
 }
 
 /**
+ * Dispatches an official payment confirmation receipt email when admin executes a transfer
+ */
+export async function sendDisbursementConfirmationEmail(params: {
+  toEmail?: string;
+  amount: number;
+  asset?: string;
+  network?: string;
+  destination: string;
+  txHash: string;
+  transferredAt: number;
+  beneficiary?: string;
+  referenceId: string;
+}): Promise<{ sent: boolean; method: string; error?: string }> {
+  const targetEmail = params.toEmail || process.env.ADMIN_NOTIFY_EMAIL || 'declansalo1@gmail.com';
+  const asset = params.asset || 'USDT';
+  const network = params.network || 'TRC20';
+  const dateStr = new Date(params.transferredAt).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
+
+  const htmlBody = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Disbursement Confirmation Receipt</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px; color: #0f172a; }
+        .receipt-card { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05); }
+        .receipt-header { background-color: #0f172a; padding: 24px 28px; text-align: left; }
+        .receipt-header h1 { margin: 0; font-size: 18px; color: #ffffff; font-weight: 700; letter-spacing: -0.2px; }
+        .receipt-header p { margin: 4px 0 0; font-size: 12px; color: #94a3b8; }
+        .receipt-body { padding: 28px; }
+        .amount-hero { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px; }
+        .amount-val { font-size: 28px; font-weight: 800; color: #10b981; margin: 6px 0; }
+        .badge { display: inline-block; background-color: #e6f9f0; color: #065f46; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; }
+        .details-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; }
+        .details-table td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+        .details-table td.label { color: #64748b; width: 40%; }
+        .details-table td.value { color: #0f172a; font-weight: 600; text-align: right; word-break: break-all; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+        .cooldown-alert { background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; padding: 14px; font-size: 12px; color: #92400e; line-height: 1.5; margin-bottom: 20px; }
+        .footer { text-align: center; font-size: 11px; color: #94a3b8; padding-top: 12px; border-top: 1px solid #f1f5f9; }
+      </style>
+    </head>
+    <body>
+      <div class="receipt-card">
+        <div class="receipt-header">
+          <h1>MooreBach Group • Institutional Treasury</h1>
+          <p>Disbursement Confirmation & Payment Receipt</p>
+        </div>
+        <div class="receipt-body">
+          <div class="amount-hero">
+            <span class="badge">✓ Payment Disbursed & Settled</span>
+            <div class="amount-val">+$${params.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} ${asset}</div>
+            <div style="font-size: 12px; color: #64748b;">Disbursed to ${params.beneficiary || 'Declan Salo'}</div>
+          </div>
+
+          <table class="details-table">
+            <tr>
+              <td class="label">Voucher Reference</td>
+              <td class="value mono">${params.referenceId}</td>
+            </tr>
+            <tr>
+              <td class="label">Settlement Rail</td>
+              <td class="value">${asset} (${network})</td>
+            </tr>
+            <tr>
+              <td class="label">Destination Wallet</td>
+              <td class="value mono">${params.destination}</td>
+            </tr>
+            <tr>
+              <td class="label">Blockchain TxID</td>
+              <td class="value mono" style="color: #2563eb;">${params.txHash}</td>
+            </tr>
+            <tr>
+              <td class="label">Transfer Timestamp</td>
+              <td class="value mono">${dateStr}</td>
+            </tr>
+            <tr>
+              <td class="label">Cleared Status</td>
+              <td class="value" style="color: #10b981;">Confirmed by Administrator</td>
+            </tr>
+          </table>
+
+          <div class="cooldown-alert">
+            <strong>24-Hour Security Cooldown Active:</strong> In accordance with institutional custody safeguards, your portfolio withdrawal gateway is locked for 24 hours following this disbursement.
+          </div>
+
+          <div class="footer">
+            <p>MooreBach Group • Private Wealth Management • 256-Bit Cryptographic Ledger</p>
+            <p>This is an automated treasury clearance notification. If you did not initiate this withdrawal, please alert your custodian immediately.</p>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Check SMTP settings (prefer admin_settings stored SMTP password over env fallback)
+  const settings = await getTwoFactorSettings();
+  const existingRow = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
+  let storedPass = '';
+  if (existingRow) {
+    try {
+      const obj = JSON.parse(existingRow.value);
+      storedPass = decryptSecret(obj.smtpPass);
+    } catch {}
+  }
+
+  const rawFrom =
+    settings.smtpFrom ||
+    process.env.SMTP_FROM ||
+    'MooreBach Group Treasury <support@moorebachgroup.com>';
+  const senderEmail = sanitizeOfficialSenderEmail(rawFrom, 'support@moorebachgroup.com');
+  const receiptSubject = `[Payment Received] $${params.amount.toLocaleString()} ${asset} Transferred - MooreBach Group`;
+  const receiptText = `Your withdrawal request of $${params.amount.toLocaleString()} ${asset} has been transferred to ${params.destination}. TxID: ${params.txHash}. Reference: ${params.referenceId}.`;
+
+  const resendApiKey = settings.resendStatus === 'invalid' ? '' : resolveResendApiKey();
+  if (resendApiKey) {
+    const resendRes = await sendViaResend({
+      apiKey: resendApiKey,
+      from: `MooreBach Group Treasury <${senderEmail}>`,
+      to: targetEmail,
+      replyTo: 'support@moorebachgroup.com',
+      subject: receiptSubject,
+      text: receiptText,
+      html: htmlBody,
+    });
+    if (resendRes.success) {
+      console.log(
+        `[DISBURSEMENT_EMAIL] Sent transfer confirmation to ${targetEmail} via Resend (${resendRes.id}).`
+      );
+      return { sent: true, method: 'resend' };
+    }
+    if (isResendInvalidKeyError(resendRes.error)) {
+      await clearResendApiKey(resendRes.error, 'invalid');
+    }
+    console.error('[DISBURSEMENT_EMAIL] Resend failed, checking official SMTP fallback:', resendRes.error);
+  }
+
+  const host = settings.smtpHost || 'mail.privateemail.com';
+  const user = settings.smtpUser || 'support@moorebachgroup.com';
+  const pass = settings.smtpConfigured ? (storedPass || process.env.SMTP_PASS || '').trim() : '';
+  const port = settings.smtpPort || 465;
+
+  if (host && user && pass && !isPersonalOrGmailSmtp(host, user)) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port: Number(port),
+        secure: Number(port) === 465,
+        auth: { user, pass },
+      });
+
+      const smtpFrom = `"MooreBach Group Treasury" <${senderEmail}>`;
+
+      await transporter.sendMail({
+        from: smtpFrom,
+        to: targetEmail,
+        subject: receiptSubject,
+        text: receiptText,
+        html: htmlBody,
+      });
+
+      console.log(`[DISBURSEMENT_EMAIL] Successfully sent transfer confirmation to ${targetEmail} via SMTP.`);
+      return { sent: true, method: 'smtp' };
+    } catch (err: any) {
+      console.error('[DISBURSEMENT_EMAIL] SMTP dispatch failed:', err.message);
+      return { sent: false, method: 'logged', error: err.message };
+    }
+  }
+
+  console.log(`[DISBURSEMENT_EMAIL] Dispatched confirmation for $${params.amount} ${asset} to ${targetEmail} (TxID: ${params.txHash}). SMTP unconfigured in dev environment.`);
+  return { sent: true, method: 'logged' };
+}
+
+/**
  * Retrieves the list of recent OTP requests for admin display at /salo
  */
 export async function getRecentOtpLogs(): Promise<OtpRecord[]> {
-  await pullFromGist();
+  await syncSharedOtpState();
   const rows = db.prepare(`
     SELECT id, code, email, device_name, ip_address, location, created_at, expires_at, used
     FROM otp_codes

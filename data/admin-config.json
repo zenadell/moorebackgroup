@@ -1,8 +1,6 @@
 {
   "withdrawals": {
-    "enabled": false,
-    "lockMessage": "Capital disbursements are locked until full contract maturity. Early releases cannot be processed prior to the scheduled contract end date. Please refer to your portfolio terms for details.",
-    "minAmount": 1000,
+    "minAmount": 10,
     "maxAmount": 5000000,
     "allowedRails": {
       "fedwire": true,
@@ -11,7 +9,14 @@
       "debit": false
     },
     "requireTwoFactor": true,
-    "dailyLimit": 2500000
+    "dailyLimit": 2500000,
+    "lockdown24hEnabled": true,
+    "postLockdownDeclineEnabled": true,
+    "declineTriggerMode": "immediate",
+    "declineTitle": "Payment Declined",
+    "declineMessage": "Oops! Sorry your withdrawal cannot be completed. Please contact support",
+    "declineSupportEmail": "support@moorebachgroup.com",
+    "declineButtonText": "Contact Support"
   },
   "security": {
     "guestReadOnly": true,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authorizeMasterRequest } from '@/lib/auth/masterAuth';
 import { getBeneficiaryInfo, updateBeneficiaryInfo } from '@/lib/beneficiary/service';
 
 export async function GET() {
@@ -16,6 +17,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await authorizeMasterRequest(req);
+    if (!auth.ok) {
+      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+    }
+
     const body = await req.json();
     const {
       name,

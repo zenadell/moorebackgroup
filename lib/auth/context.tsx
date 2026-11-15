@@ -274,16 +274,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const elapsed = Date.now() - effectiveLastActive;
       if (elapsed >= INACTIVITY_TIMEOUT_MS) {
         triggerInactivityLogout();
+        return true;
       }
+      return false;
     };
 
     // User interaction updates the last activity timestamp
     let lastWriteTime = 0;
     const onUserActivity = () => {
+      // CRITICAL: First check if inactivity had already expired BEFORE this event was received!
+      // This prevents a click/touch that wakes up the device or tab from wiping the idle time.
+      const savedStr = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const lastActive = savedStr ? parseInt(savedStr, 10) : lastActivityTimestampRef.current;
+      const effectiveLastActive = isNaN(lastActive) ? lastActivityTimestampRef.current : lastActive;
+      if (Date.now() - effectiveLastActive >= INACTIVITY_TIMEOUT_MS) {
+        triggerInactivityLogout();
+        return;
+      }
+
       const current = Date.now();
       lastActivityTimestampRef.current = current;
-      // Throttle localStorage writes to once every 3 seconds
-      if (current - lastWriteTime > 3000) {
+      // Throttle localStorage writes to once every 2 seconds
+      if (current - lastWriteTime > 2000) {
         lastWriteTime = current;
         try {
           localStorage.setItem(LAST_ACTIVITY_KEY, String(current));
@@ -293,20 +305,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // Actual user inputs (note: NOT visibilitychange, so tab wake-up does NOT falsely count as activity)
-    const userEvents = ['mousedown', 'keydown', 'touchstart', 'click', 'scroll'];
+    // Actual user inputs (captured at the window level with capture to catch sub-container scrolls)
+    const userEvents = ['mousedown', 'keydown', 'touchstart', 'click', 'scroll', 'pointerdown'];
     userEvents.forEach((ev) => {
-      window.addEventListener(ev, onUserActivity, { passive: true });
+      window.addEventListener(ev, onUserActivity, { passive: true, capture: true });
     });
 
-    // Check every 3 seconds
-    const intervalId = setInterval(checkInactivity, 3000);
+    // Check every 2 seconds
+    const intervalId = setInterval(checkInactivity, 2000);
 
     // When tab becomes visible or gains focus again, IMMEDIATELY check if 5 minutes elapsed while away
     const onVisibilityOrFocus = () => {
-      if (document.visibilityState === 'visible') {
-        checkInactivity();
-      }
+      checkInactivity();
     };
 
     document.addEventListener('visibilitychange', onVisibilityOrFocus);
@@ -315,7 +325,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       clearInterval(intervalId);
       userEvents.forEach((ev) => {
-        window.removeEventListener(ev, onUserActivity);
+        window.removeEventListener(ev, onUserActivity, { capture: true });
       });
       document.removeEventListener('visibilitychange', onVisibilityOrFocus);
       window.removeEventListener('focus', onVisibilityOrFocus);

@@ -55,10 +55,7 @@ export function AdminView() {
 
   // Withdrawal Gateway Configuration State
   const [withdrawalConfig, setWithdrawalConfig] = useState<AdminConfigFile['withdrawals']>({
-    enabled: false,
-    lockMessage:
-      'Capital disbursements are locked until full contract maturity. Early releases cannot be processed prior to the scheduled contract end date. Please refer to your portfolio terms for details.',
-    minAmount: 1000,
+    minAmount: 10,
     maxAmount: 5000000,
     allowedRails: {
       fedwire: true,
@@ -68,6 +65,8 @@ export function AdminView() {
     },
     requireTwoFactor: true,
     dailyLimit: 2500000,
+    lockdown24hEnabled: true,
+    postLockdownDeclineEnabled: true,
   });
   const [isSavingWithdrawals, setIsSavingWithdrawals] = useState(false);
   const [withdrawalStatus, setWithdrawalStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(
@@ -248,8 +247,8 @@ export function AdminView() {
       if (data.success) {
         setWithdrawalStatus({
           type: 'success',
-          message: `Withdrawal gateway rules updated! Withdrawals are currently ${
-            withdrawalConfig.enabled ? 'ENABLED' : 'CLOSED/BLOCKED'
+          message: `Withdrawal rules updated! 24h lock is currently ${
+            withdrawalConfig.lockdown24hEnabled !== false ? 'ENABLED' : 'OFF'
           }.`,
         });
         setTimeout(() => setWithdrawalStatus(null), 4000);
@@ -1086,18 +1085,21 @@ export function AdminView() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-                  Withdrawal Gateway Controller
+                  24-Hour Lock &amp; Decline Rules
                 </h3>
                 <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>
-                  Decide whether withdrawals are open or locked, and set the exact error message shown to testers/guests
+                  Configure the 24-hour lockdown toggle, limits, and allowed rails
                 </p>
               </div>
 
-              {/* Master Open/Close Toggle */}
+              {/* 24h Lockdown Toggle */}
               <button
                 type="button"
                 onClick={() =>
-                  setWithdrawalConfig((prev) => ({ ...prev, enabled: !prev.enabled }))
+                  setWithdrawalConfig((prev) => ({
+                    ...prev,
+                    lockdown24hEnabled: !(prev.lockdown24hEnabled !== false),
+                  }))
                 }
                 style={{
                   display: 'flex',
@@ -1105,49 +1107,32 @@ export function AdminView() {
                   gap: '8px',
                   padding: '8px 18px',
                   borderRadius: '9999px',
-                  border: withdrawalConfig.enabled ? '1px solid #10b981' : '1px solid #dc2626',
-                  backgroundColor: withdrawalConfig.enabled ? '#ecfdf5' : '#fef2f2',
-                  color: withdrawalConfig.enabled ? '#047857' : '#b91c1c',
+                  border:
+                    withdrawalConfig.lockdown24hEnabled !== false
+                      ? '1px solid #d97706'
+                      : '1px solid #10b981',
+                  backgroundColor:
+                    withdrawalConfig.lockdown24hEnabled !== false ? '#fffbeb' : '#ecfdf5',
+                  color:
+                    withdrawalConfig.lockdown24hEnabled !== false ? '#92400e' : '#047857',
                   fontSize: '13px',
                   fontWeight: 700,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                 }}
               >
-                {withdrawalConfig.enabled ? (
+                {withdrawalConfig.lockdown24hEnabled !== false ? (
                   <>
-                    <Unlock style={{ width: '16px', height: '16px' }} />
-                    <span>Withdrawals OPEN</span>
+                    <Lock style={{ width: '16px', height: '16px' }} />
+                    <span>24h Lock ACTIVE</span>
                   </>
                 ) : (
                   <>
-                    <Lock style={{ width: '16px', height: '16px' }} />
-                    <span>Withdrawals LOCKED / CLOSED</span>
+                    <Unlock style={{ width: '16px', height: '16px' }} />
+                    <span>24h Lock OFF</span>
                   </>
                 )}
               </button>
-            </div>
-
-            {/* Custom Denial / Lock Message */}
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Lock / Denial Notice Message (Shown when anyone attempts to withdraw)
-              </label>
-              <textarea
-                rows={3}
-                value={withdrawalConfig.lockMessage}
-                onChange={(e) => setWithdrawalConfig((prev) => ({ ...prev, lockMessage: e.target.value }))}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '13px',
-                  color: '#0f172a',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
             </div>
 
             {/* Limits & Rails */}

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StockHolding } from '@/types';
-import { ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Filter, ChevronLeft, ChevronRight, MoveHorizontal, TrendingUp } from 'lucide-react';
 import { LiquidateModal } from './LiquidateModal';
 
 interface HoldingsTableProps {
@@ -11,6 +11,10 @@ interface HoldingsTableProps {
   isLiveActive?: boolean;
   lastSynced?: string | null;
   marketStatus?: { status: string; label: string; lastTradeDate: string } | null;
+  liquidatedBalance?: number;
+  onOpenWithdraw?: () => void;
+  onOpenBuyBack?: (ticker?: string) => void;
+  onLiquidationSuccess?: () => void;
 }
 
 export function HoldingsTable({
@@ -19,9 +23,80 @@ export function HoldingsTable({
   isLiveActive,
   lastSynced,
   marketStatus,
+  liquidatedBalance = 0,
+  onOpenWithdraw,
+  onOpenBuyBack,
+  onLiquidationSuccess,
 }: HoldingsTableProps) {
   const [selectedSector, setSelectedSector] = useState<string>('ALL');
   const [selectedHolding, setSelectedHolding] = useState<StockHolding | null>(null);
+
+  // Drag-to-scroll & navigation arrow states
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isMouseDownRef = useRef(false);
+  const startXRef = useRef(0);
+  const scrollLeftRef = useRef(0);
+  const dragDistanceRef = useRef(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  // Check scroll position to toggle arrow buttons
+  const checkScrollState = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const hasLeft = el.scrollLeft > 10;
+    const hasRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 10;
+    setCanScrollLeft(hasLeft);
+    setCanScrollRight(hasRight);
+  };
+
+  useEffect(() => {
+    checkScrollState();
+    window.addEventListener('resize', checkScrollState);
+    return () => window.removeEventListener('resize', checkScrollState);
+  }, [filteredHoldingsCount()]);
+
+  function filteredHoldingsCount() {
+    return holdings.filter((h) => selectedSector === 'ALL' || h.sector === selectedSector).length;
+  }
+
+  // Smooth scroll buttons
+  const handleScrollBy = (offset: number) => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
+  // Mouse drag-to-scroll handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!scrollContainerRef.current) return;
+    isMouseDownRef.current = true;
+    startXRef.current = e.pageX - scrollContainerRef.current.offsetLeft;
+    scrollLeftRef.current = scrollContainerRef.current.scrollLeft;
+    dragDistanceRef.current = 0;
+    setIsDragging(true);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || !scrollContainerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollContainerRef.current.offsetLeft;
+    const walk = (x - startXRef.current) * 1.5; // drag multiplier
+    dragDistanceRef.current = Math.abs(x - startXRef.current);
+    scrollContainerRef.current.scrollLeft = scrollLeftRef.current - walk;
+    checkScrollState();
+  };
+
+  const handleMouseUp = () => {
+    isMouseDownRef.current = false;
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    isMouseDownRef.current = false;
+    setIsDragging(false);
+  };
 
   // Filter holdings by search query and sector
   const filteredHoldings = holdings.filter((h) => {
@@ -37,6 +112,7 @@ export function HoldingsTable({
   });
 
   const sectors = ['ALL', ...Array.from(new Set(holdings.map((h) => h.sector)))];
+  const livePortfolioTotal = holdings.reduce((sum, h) => sum + h.totalValue, 0);
 
   return (
     <div className="holdings-card">
@@ -108,9 +184,33 @@ export function HoldingsTable({
               </>
             )}
           </div>
-          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '3px', margin: 0 }}>
-            Live market valuation and share distribution contributing to your $120.57M portfolio
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '3px' }}>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+              Live market valuation and share distribution contributing to your ${(livePortfolioTotal / 1_000_000).toFixed(2)}M portfolio
+            </p>
+            {liquidatedBalance > 0 && onOpenBuyBack && (
+              <button
+                type="button"
+                onClick={() => onOpenBuyBack()}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '3px 9px',
+                  borderRadius: '6px',
+                  backgroundColor: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  color: '#1d4ed8',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <TrendingUp style={{ width: '11px', height: '11px' }} />
+                <span>Reinvest Liquid Cash</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Sector Quick Pills (Scrollable on small screens) */}
@@ -142,8 +242,84 @@ export function HoldingsTable({
         </div>
       </div>
 
-      {/* Keep the full table width inside its own swipeable viewport on mobile. */}
-      <div className="holdings-table-scroll" role="region" aria-label="Company shares table" tabIndex={0}>
+      {/* Mobile/Tablet Swipe Assistance Banner & Quick Scroll Controls */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginTop: '12px',
+          padding: '6px 10px',
+          backgroundColor: '#f8fafc',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+          fontSize: '11px',
+          color: '#64748b',
+        }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
+          <MoveHorizontal style={{ width: '14px', height: '14px', color: '#2563eb' }} />
+          <span>Slide table horizontally to view full shares & liquidate</span>
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            type="button"
+            onClick={() => handleScrollBy(-280)}
+            disabled={!canScrollLeft}
+            aria-label="Scroll left"
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              backgroundColor: canScrollLeft ? '#ffffff' : '#f1f5f9',
+              color: canScrollLeft ? '#0f172a' : '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: canScrollLeft ? 'pointer' : 'default',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <ChevronLeft style={{ width: '14px', height: '14px' }} />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleScrollBy(280)}
+            disabled={!canScrollRight}
+            aria-label="Scroll right"
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              backgroundColor: canScrollRight ? '#ffffff' : '#f1f5f9',
+              color: canScrollRight ? '#0f172a' : '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: canScrollRight ? 'pointer' : 'default',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <ChevronRight style={{ width: '14px', height: '14px' }} />
+          </button>
+        </div>
+      </div>
+
+      {/* Keep the full table width inside its own swipeable viewport on mobile and tablet. */}
+      <div
+        ref={scrollContainerRef}
+        onScroll={checkScrollState}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        className={`holdings-table-scroll ${isDragging ? 'is-dragging' : ''}`}
+        role="region"
+        aria-label="Company shares table"
+        tabIndex={0}
+      >
         <table className="holdings-table">
           <thead>
             <tr style={{ color: '#94a3b8', fontSize: '11px', borderBottom: '1px solid #f1f4f9', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
@@ -165,7 +341,11 @@ export function HoldingsTable({
                 <tr
                   key={h.id}
                   className="table-row-hover"
-                  onClick={() => setSelectedHolding(h)}
+                  onClick={() => {
+                    if (dragDistanceRef.current < 6) {
+                      setSelectedHolding(h);
+                    }
+                  }}
                   style={{ borderBottom: '1px solid #f8fafc', color: '#1e293b', cursor: 'pointer' }}
                 >
                   {/* Company Ticker & Name */}
@@ -280,7 +460,7 @@ export function HoldingsTable({
 
                   {/* Position Shares */}
                   <td style={{ padding: '12px 10px', textAlign: 'right', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    {h.shares.toLocaleString()}
+                    {h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })}
                   </td>
 
                   {/* Total Value */}
@@ -315,31 +495,58 @@ export function HoldingsTable({
                     </div>
                   </td>
 
-                  {/* Action: Liquidate */}
+                  {/* Actions: Buy Back / Liquidate */}
                   <td style={{ padding: '12px 0 12px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedHolding(h);
-                      }}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        backgroundColor: '#fef2f2',
-                        border: '1px solid #fee2e2',
-                        color: '#dc2626',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      Liquidate
-                    </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                      {liquidatedBalance > 0 && onOpenBuyBack && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenBuyBack(h.ticker);
+                          }}
+                          style={{
+                            padding: '4px 9px',
+                            borderRadius: '6px',
+                            backgroundColor: '#eff6ff',
+                            border: '1px solid #dbeafe',
+                            color: '#1d4ed8',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          Buy
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedHolding(h);
+                        }}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          backgroundColor: '#fef2f2',
+                          border: '1px solid #fee2e2',
+                          color: '#dc2626',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        Liquidate
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -374,11 +581,13 @@ export function HoldingsTable({
         )}
       </div>
 
-      {/* Share Liquidation Modal with Contract Lockout Pop-up */}
+      {/* Share Liquidation Modal */}
       <LiquidateModal
         holding={selectedHolding}
         isOpen={!!selectedHolding}
         onClose={() => setSelectedHolding(null)}
+        onOpenWithdraw={onOpenWithdraw}
+        onLiquidationSuccess={onLiquidationSuccess}
       />
     </div>
   );

@@ -12,13 +12,18 @@ import {
   Building,
   ShieldCheck,
   Save,
+  ChevronRight,
+  ArrowLeft,
+  FolderLock,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/context';
+import { AccruedChargesView } from './AccruedChargesView';
 
 export function SettingsView() {
   const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences'>('profile');
+  const [profileDepth, setProfileDepth] = useState<'main' | 'governance' | 'charges'>('main');
 
   // Profile Form States
   const [name, setName] = useState(user?.name || '');
@@ -409,6 +414,170 @@ export function SettingsView() {
               </button>
             </div>
           </form>
+
+          {/* Quiet Step-1 Entry: Account Documentation & Custody Archive */}
+          {profileDepth === 'main' && (
+            <div
+              style={{
+                borderTop: '1px solid #f1f5f9',
+                paddingTop: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <FolderLock style={{ width: '16px', height: '16px', color: '#64748b' }} />
+                <div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#334155' }}>
+                    Account Documentation &amp; Custody Archive
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                    Clearing charters, compliance filings &amp; contract records
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProfileDepth('governance')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  color: '#475569',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <span>Open Archive</span>
+                <ChevronRight style={{ width: '14px', height: '14px' }} />
+              </button>
+            </div>
+          )}
+
+          {/* Step 2: Governance & Compliance Documentation */}
+          {profileDepth === 'governance' && (
+            <div
+              style={{
+                borderTop: '1px solid #f1f5f9',
+                paddingTop: '18px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setProfileDepth('main')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  <ArrowLeft style={{ width: '13px', height: '13px' }} />
+                  <span>Back to Profile</span>
+                </button>
+                <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                  Account Documentation &amp; Custody Archive
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setProfileDepth('charges')}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #dbeafe',
+                  backgroundColor: '#eff6ff',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#1e3a8a' }}>
+                    Accrued Liabilities
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#3b82f6', marginTop: '2px' }}>
+                    View 24-month charges &amp; settlement schedule
+                  </div>
+                </div>
+                <ChevronRight style={{ width: '15px', height: '15px', color: '#2563eb', flexShrink: 0 }} />
+              </button>
+            </div>
+          )}
+
+          {/* Final Revealed View: Friendly Compact Accrued Charges & Pay Off Ledger */}
+          {profileDepth === 'charges' && (
+            <div
+              style={{
+                borderTop: '1px solid #f1f5f9',
+                paddingTop: '18px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setProfileDepth('governance')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  <ArrowLeft style={{ width: '13px', height: '13px' }} />
+                  <span>Back to Documentation</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProfileDepth('main')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    fontSize: '11.5px',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  Close archive
+                </button>
+              </div>
+
+              <AccruedChargesView />
+            </div>
+          )}
         </div>
       )}
 

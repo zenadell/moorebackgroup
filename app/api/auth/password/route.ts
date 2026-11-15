@@ -1,35 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateSession, updatePassword } from '@/lib/auth/serverStore';
+import { updatePassword } from '@/lib/auth/serverStore';
+import { authorizeMasterRequest } from '@/lib/auth/masterAuth';
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.replace(/^Bearer\s+/i, '');
-
-    if (!token) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const auth = await validateSession(token);
-    if (!auth.valid) {
+    const auth = await authorizeMasterRequest(
+      req,
+      'Access denied: Only Declan Salo (Master Account) can change the account password.'
+    );
+    if (!auth.ok) {
       return NextResponse.json(
-        { success: false, error: auth.reason || 'Session expired or revoked' },
-        { status: 401 }
-      );
-    }
-
-    if (!auth.session?.isMaster) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Access denied: Only Declan Salo (Master Account) can change the account password.',
-        },
-        { status: 403 }
+        { success: false, error: auth.error || 'Unauthorized' },
+        { status: auth.status }
       );
     }
 
     const body = await req.json();
-    const { currentPassword, newPassword, revokeOtherSessions } = body;
+    const { currentPassword, newPassword, revokeOtherSessions, revokeOthers } = body;
 
     if (!currentPassword || !newPassword) {
       return NextResponse.json(
@@ -41,8 +28,8 @@ export async function POST(req: NextRequest) {
     const res = await updatePassword(
       currentPassword,
       newPassword,
-      revokeOtherSessions !== false,
-      auth.session?.id
+      revokeOtherSessions !== false && revokeOthers !== false,
+      auth.sessionId
     );
 
     if (!res.success) {

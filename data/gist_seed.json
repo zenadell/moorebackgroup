@@ -18,7 +18,7 @@
     "withdrawals": {
       "enabled": false,
       "lockMessage": "Capital disbursements are locked until full contract maturity. Early releases cannot be processed prior to the scheduled contract end date. Please refer to your portfolio terms for details.",
-      "minAmount": 1000,
+      "minAmount": 10,
       "maxAmount": 5000000,
       "allowedRails": {
         "fedwire": true,

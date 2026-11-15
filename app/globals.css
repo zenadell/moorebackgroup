@@ -197,9 +197,33 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
   scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+  cursor: grab;
+}
+
+.holdings-table-scroll.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.holdings-table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.holdings-table-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+
+.holdings-table-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 9999px;
+}
+
+.holdings-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 .holdings-table-scroll:focus-visible {
@@ -473,3 +497,335 @@ body {
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
   animation: pulseGlow 1.4s ease-in-out infinite;
 }
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================================
+   SALO ADMIN CONSOLE — ENTERPRISE LIGHT INSTITUTIONAL SHELL (STRIPE / MERCURY)
+   ============================================================================ */
+.salo-shell {
+  min-height: 100vh;
+  background-color: #f9fafb;
+  color: #111827;
+  display: flex;
+  position: relative;
+}
+
+.salo-sidebar {
+  width: 244px;
+  flex-shrink: 0;
+  background-color: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 40;
+}
+
+.salo-mobile-backdrop {
+  display: none;
+}
+
+.salo-main-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.salo-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.salo-content {
+  padding: 24px 28px 48px;
+  max-width: 1380px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.salo-mobile-menu-trigger {
+  display: none;
+}
+
+.salo-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.salo-composer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.salo-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.salo-vault-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.salo-table-wrap {
+  display: block;
+}
+
+.salo-mobile-cards {
+  display: none;
+}
+
+@media (max-width: 1220px) {
+  .salo-composer-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1024px) {
+  .salo-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.14);
+  }
+  .salo-sidebar.open {
+    transform: translateX(0);
+  }
+  .salo-mobile-backdrop.open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.32);
+    backdrop-filter: blur(2px);
+    z-index: 35;
+  }
+  .salo-mobile-menu-trigger {
+    display: inline-flex;
+  }
+  .salo-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .salo-vault-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .salo-topbar {
+    padding: 12px 16px;
+  }
+  .salo-content {
+    padding: 16px 14px 36px;
+  }
+  .salo-two-col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .salo-table-wrap {
+    display: none;
+  }
+  .salo-mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .salo-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Native top-layer dialog styling & accessible validation */
+dialog.buyback-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  width: min(500px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: visible;
+}
+
+dialog.buyback-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.buyback-dialog::backdrop {
+  background-color: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(5px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+dialog.buyback-dialog .buyback-amount-input:user-invalid,
+dialog.buyback-dialog .buyback-amount-input[aria-invalid='true'] {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+/* Visually hidden utility (accessible to screen readers & keyboard nav) */
+.visually-hidden {
+  position: absolute;
+  clip-path: inset(50%);
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
+
+/* Modern Top-Layer Pay Off Dialog (starting-style + discrete transition + fallback) */
+dialog.payoff-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  width: min(464px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  max-height: calc(100dvh - 28px);
+  overflow: visible;
+  opacity: 0;
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.22s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog.payoff-dialog {
+    transform: translateY(10px) scale(0.97);
+  }
+}
+
+dialog.payoff-dialog[open]:where(:not([data-closing])) {
+  opacity: 1;
+}
+
+dialog.payoff-dialog[data-closing] {
+  pointer-events: none;
+}
+
+dialog.payoff-dialog[open]:where(:not([data-closing]))::backdrop {
+  background-color: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(8px);
+}
+
+@starting-style {
+  dialog.payoff-dialog[open]:where(:not([data-closing])) {
+    opacity: 0;
+  }
+  dialog.payoff-dialog[open]:where(:not([data-closing]))::backdrop {
+    background-color: rgba(15, 23, 42, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog.payoff-dialog[open]:where(:not([data-closing])) {
+    transform: translateY(0) scale(1);
+  }
+  @starting-style {
+    dialog.payoff-dialog[open]:where(:not([data-closing])) {
+      transform: translateY(10px) scale(0.97);
+    }
+  }
+}
+
+dialog.payoff-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.payoff-dialog::backdrop {
+  background-color: rgba(15, 23, 42, 0);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  transition-property: background-color, backdrop-filter, display, overlay;
+  transition-duration: 0.22s;
+  transition-timing-function: ease-out;
+  transition-behavior: allow-discrete;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog.payoff-dialog,
+  dialog.payoff-dialog::backdrop {
+    transition-duration: 0.1s;
+  }
+}
+
+dialog.payoff-dialog .payoff-field-input:focus-visible,
+dialog.payoff-dialog .payoff-btn-focus:focus-visible,
+dialog.payoff-dialog .visually-hidden:focus-visible + .payoff-method-pill {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
+}
+
+dialog.payoff-dialog .payoff-field-shell:focus-within {
+  border-color: #0f172a !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+
+dialog.payoff-dialog .payoff-field-shell[data-invalid='true'] {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.payoff-copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.payoff-copy-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background-color: #0f172a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.payoff-copy-btn[data-copied] + .payoff-copy-tip,
+.payoff-copy-btn[data-failed] + .payoff-copy-tip {
+  opacity: 1;
+}
+

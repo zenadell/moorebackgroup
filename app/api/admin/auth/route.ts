@@ -2,60 +2,53 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   verifyMasterPassword,
   createMasterSession,
-  validateSession,
+  revokeSession,
   getUserProfile,
   parseDeviceFromUserAgent,
 } from '@/lib/auth/serverStore';
+import { authorizeMasterRequest } from '@/lib/auth/masterAuth';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_STORE = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+};
 
 export async function GET(req: NextRequest) {
   try {
-    const token =
-      req.cookies.get('moback_session_token')?.value ||
-      req.cookies.get('salo_master_token')?.value ||
-      req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-
-    const saloKey = req.headers.get('x-salo-key');
-
-    if (saloKey) {
-      const isKeyValid = await verifyMasterPassword(saloKey);
-      if (isKeyValid) {
-        const user = await getUserProfile();
-        if (!user) return NextResponse.json({ success: false, authorized: false, error: 'Profile record is not available' }, { status: 503 });
-        return NextResponse.json({
+    const auth = await authorizeMasterRequest(req);
+    if (!auth.ok) {
+      return NextResponse.json(
+        {
           success: true,
-          authorized: true,
-          isMaster: true,
-          user,
-        });
-      }
+          authorized: false,
+          error: auth.error || 'No active master session',
+        },
+        { headers: NO_STORE }
+      );
     }
 
-    if (!token) {
-      return NextResponse.json({
-        success: true,
-        authorized: false,
-        error: 'No active master session',
-      });
+    const user = await getUserProfile();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, authorized: false, error: 'Profile record is not available' },
+        { status: 503, headers: NO_STORE }
+      );
     }
 
-    const sessionRes = await validateSession(token);
-    if (sessionRes.valid && sessionRes.session?.isMaster) {
-      return NextResponse.json({
+    return NextResponse.json(
+      {
         success: true,
         authorized: true,
         isMaster: true,
-        user: sessionRes.user,
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      authorized: false,
-      error: 'Session is not authorized for master administration',
-    });
+        user,
+      },
+      { headers: NO_STORE }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Server error checking master session';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -103,24 +96,42 @@ export async function POST(req: NextRequest) {
       message: 'Master Security Terminal Unlocked',
     });
 
-    // Set cookie for session persistence
-    response.cookies.set('moback_session_token', session.token, {
+    // Dedicated admin cookie (isolated from user dashboard session cookie)
+    response.cookies.set('salo_master_token', session.token, {
       path: '/',
       httpOnly: false,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
 
-    response.cookies.set('salo_master_token', session.token, {
-      path: '/',
-      httpOnly: false,
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
     return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Master authentication error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const auth = await authorizeMasterRequest(req);
+    if (auth.ok && auth.sessionId) {
+      await revokeSession(auth.sessionId, 'Locked manually by Master Admin');
+    }
+
+    const response = NextResponse.json({
+      success: true,
+      authorized: false,
+      message: 'Admin terminal locked.',
+    });
+    response.cookies.set('salo_master_token', '', {
+      path: '/',
+      httpOnly: false,
+      sameSite: 'lax',
+      maxAge: 0,
+    });
+    return response;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to lock terminal';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
