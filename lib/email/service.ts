@@ -750,15 +750,14 @@ export async function sendAdminWithdrawalDisbursedNotificationEmail(
       senderName: 'MooreBach Group Client Services',
       senderRole: 'Portfolio Custody & Treasury Disbursement Desk',
       subject: `Funds Disbursed: ${formatAdminUsd(record.amount)} (${railLabel}) — Settlement Complete`,
-      preheader: `Your withdrawal of ${formatAdminUsd(record.amount)} has been transmitted to ${destinationDisplay}.`,
+      preheader: `Your withdrawal disbursement on MooreBach Group Portfolio (#MO-88429) has been completed and deposited into the designated address.`,
       templateId: 'withdrawal_advisory',
       classification: 'DISBURSEMENT SETTLEMENT RECEIPT',
       tone: 'navy',
       headline: 'Withdrawal Funds Successfully Disbursed',
       greeting: `Dear ${recipientName},`,
       bodyText:
-        `Your withdrawal disbursement from MooreBach Group Portfolio (#MO-88429) has been completed and transmitted to your designated settlement destination.\n\n` +
-        `Please retain the settlement reference and transaction confirmation details below for your records. Notice that in accordance with institutional custody safeguards, a 24-hour withdrawal security cooldown applies after settlement.`,
+        `Your withdrawal disbursement on MooreBach Group Portfolio (#MO-88429) has been completed and deposited into the designated address.`,
       summaryTitle: 'Disbursement Settlement Receipt',
       summaryRows: [
         { label: 'Settlement Reference', value: record.id },
