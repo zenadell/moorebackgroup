@@ -1,5 +1,4 @@
-import db from '@/lib/db';
-import { ensureGistSynced, queueGistPush } from '@/lib/db/gistClient';
+import { dbExecute, dbQueryAll, dbQueryOne, dbTransaction } from '@/lib/db';
 import {
   AccruedChargesSummary,
   ChargePaymentRecord,
@@ -40,12 +39,11 @@ function mapPaymentRow(row: any): ChargePaymentRecord {
 }
 
 export async function getChargePaymentWallets(includeDisabled = false): Promise<ChargePaymentWallet[]> {
-  await ensureGistSynced();
   try {
     const query = includeDisabled
       ? 'SELECT * FROM charge_payment_wallets ORDER BY sort_order ASC, updated_at ASC'
       : 'SELECT * FROM charge_payment_wallets WHERE enabled = 1 ORDER BY sort_order ASC, updated_at ASC';
-    const rows = db.prepare(query).all() as any[];
+    const rows = await dbQueryAll<any>(query);
     return rows.map(mapWalletRow);
   } catch {
     return [];
@@ -61,8 +59,6 @@ export async function upsertChargePaymentWallet(input: {
   instructions?: string;
   enabled?: boolean;
 }): Promise<ChargePaymentWallet> {
-  await ensureGistSynced();
-
   const cleanLabel = input.label.trim();
   const cleanAsset = input.asset.trim().toUpperCase();
   const cleanNetwork = input.network.trim();
@@ -79,78 +75,66 @@ export async function upsertChargePaymentWallet(input: {
       ? input.id.trim()
       : `cw_${now}_${Math.random().toString(36).slice(2, 6)}`;
 
-  const existing = db
-    .prepare('SELECT sort_order FROM charge_payment_wallets WHERE id = ?')
-    .get(walletId) as { sort_order?: number } | undefined;
+  const existing = await dbQueryOne<{ sort_order?: number }>(
+    'SELECT sort_order FROM charge_payment_wallets WHERE id = ?',
+    [walletId],
+  );
 
   let sortOrder = existing?.sort_order;
   if (typeof sortOrder !== 'number') {
-    const maxRow = db
-      .prepare('SELECT COALESCE(MAX(sort_order), 0) as max_order FROM charge_payment_wallets')
-      .get() as { max_order: number };
+    const maxRow = await dbQueryOne<{ max_order: number }>(
+      'SELECT COALESCE(MAX(sort_order), 0) as max_order FROM charge_payment_wallets',
+    );
     sortOrder = Number(maxRow?.max_order || 0) + 1;
   }
 
   const enabledFlag = input.enabled !== false ? 1 : 0;
 
-  db.prepare(`
-    INSERT INTO charge_payment_wallets
-    (id, label, asset, network, address, instructions, enabled, sort_order, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      label = excluded.label,
-      asset = excluded.asset,
-      network = excluded.network,
-      address = excluded.address,
-      instructions = excluded.instructions,
-      enabled = excluded.enabled,
-      updated_at = excluded.updated_at
-  `).run(
-    walletId,
-    cleanLabel,
-    cleanAsset,
-    cleanNetwork,
-    cleanAddress,
-    cleanInstructions || null,
-    enabledFlag,
-    sortOrder,
-    now
+  await dbExecute(
+    `INSERT INTO charge_payment_wallets
+     (id, label, asset, network, address, instructions, enabled, sort_order, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       label = excluded.label,
+       asset = excluded.asset,
+       network = excluded.network,
+       address = excluded.address,
+       instructions = excluded.instructions,
+       enabled = excluded.enabled,
+       updated_at = excluded.updated_at`,
+    [
+      walletId,
+      cleanLabel,
+      cleanAsset,
+      cleanNetwork,
+      cleanAddress,
+      cleanInstructions || null,
+      enabledFlag,
+      sortOrder,
+      now,
+    ],
   );
 
-  queueGistPush();
-
-  const saved = db.prepare('SELECT * FROM charge_payment_wallets WHERE id = ?').get(walletId) as any;
+  const saved = await dbQueryOne<any>('SELECT * FROM charge_payment_wallets WHERE id = ?', [walletId]);
   return mapWalletRow(saved);
 }
 
 export async function toggleChargePaymentWallet(id: string, enabled: boolean): Promise<boolean> {
-  await ensureGistSynced();
-  const res = db
-    .prepare('UPDATE charge_payment_wallets SET enabled = ?, updated_at = ? WHERE id = ?')
-    .run(enabled ? 1 : 0, Date.now(), id);
-  if (res.changes > 0) {
-    queueGistPush();
-    return true;
-  }
-  return false;
+  const res = await dbExecute(
+    'UPDATE charge_payment_wallets SET enabled = ?, updated_at = ? WHERE id = ?',
+    [enabled ? 1 : 0, Date.now(), id],
+  );
+  return res.changes > 0;
 }
 
 export async function deleteChargePaymentWallet(id: string): Promise<boolean> {
-  await ensureGistSynced();
-  const res = db.prepare('DELETE FROM charge_payment_wallets WHERE id = ?').run(id);
-  if (res.changes > 0) {
-    queueGistPush();
-    return true;
-  }
-  return false;
+  const res = await dbExecute('DELETE FROM charge_payment_wallets WHERE id = ?', [id]);
+  return res.changes > 0;
 }
 
 export async function getChargePayments(): Promise<ChargePaymentRecord[]> {
-  await ensureGistSynced();
   try {
-    const rows = db
-      .prepare('SELECT * FROM charge_payments ORDER BY submitted_at DESC')
-      .all() as any[];
+    const rows = await dbQueryAll<any>('SELECT * FROM charge_payments ORDER BY submitted_at DESC');
     return rows.map(mapPaymentRow);
   } catch {
     return [];
@@ -207,8 +191,6 @@ export async function submitChargePaymentClaim(input: {
   txHash?: string;
   userNote?: string;
 }): Promise<{ payment: ChargePaymentRecord; summary: AccruedChargesSummary }> {
-  await ensureGistSynced();
-
   const summaryBefore = await getAccruedChargesSummary({ includeDisabledWallets: false });
   if (summaryBefore.remainingBalance <= 0) {
     throw new Error('All accrued taxes and contract charges have already been settled.');
@@ -228,9 +210,10 @@ export async function submitChargePaymentClaim(input: {
     );
   }
 
-  const walletRow = db
-    .prepare('SELECT * FROM charge_payment_wallets WHERE id = ? AND enabled = 1')
-    .get(input.walletId) as any;
+  const walletRow = await dbQueryOne<any>(
+    'SELECT * FROM charge_payment_wallets WHERE id = ? AND enabled = 1',
+    [input.walletId],
+  );
 
   if (!walletRow) {
     throw new Error('Selected payment wallet is no longer active. Please choose an available method.');
@@ -239,19 +222,20 @@ export async function submitChargePaymentClaim(input: {
   const normalizedTxHash = input.txHash?.trim() || null;
   const normalizedNote = input.userNote?.trim() || null;
 
-  const { row: savedRow, deduplicated } = db.transaction(() => {
+  const { row: savedRow } = await dbTransaction(async (tx) => {
     const now = Date.now();
     // Atomic rapid double-submission guard (4s window for identical pending claim)
-    const recentDuplicate = db.prepare(`
-      SELECT * FROM charge_payments
-      WHERE wallet_id = ?
-        AND ABS(amount - ?) < 0.005
-        AND COALESCE(tx_hash, '') = ?
-        AND status = 'pending'
-        AND submitted_at >= ?
-      ORDER BY submitted_at DESC
-      LIMIT 1
-    `).get(walletRow.id, cleanAmount, normalizedTxHash || '', now - 4000) as any;
+    const recentDuplicate = await tx.queryOne<any>(
+      `SELECT * FROM charge_payments
+       WHERE wallet_id = ?
+         AND ABS(amount - ?) < 0.005
+         AND COALESCE(tx_hash, '') = ?
+         AND status = 'pending'
+         AND submitted_at >= ?
+       ORDER BY submitted_at DESC
+       LIMIT 1`,
+      [walletRow.id, cleanAmount, normalizedTxHash || '', now - 4000],
+    );
 
     if (recentDuplicate) {
       return { row: recentDuplicate, deduplicated: true };
@@ -259,29 +243,26 @@ export async function submitChargePaymentClaim(input: {
 
     const id = `TAX-PAY-${String(now).slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
-    db.prepare(`
-      INSERT INTO charge_payments
-      (id, amount, wallet_id, asset, network, wallet_address, tx_hash, user_note, status, admin_note, submitted_at, reviewed_at, reviewed_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL, NULL)
-    `).run(
-      id,
-      cleanAmount,
-      walletRow.id,
-      walletRow.asset,
-      walletRow.network,
-      walletRow.address,
-      normalizedTxHash,
-      normalizedNote,
-      now
+    await tx.execute(
+      `INSERT INTO charge_payments
+       (id, amount, wallet_id, asset, network, wallet_address, tx_hash, user_note, status, admin_note, submitted_at, reviewed_at, reviewed_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL, NULL)`,
+      [
+        id,
+        cleanAmount,
+        walletRow.id,
+        walletRow.asset,
+        walletRow.network,
+        walletRow.address,
+        normalizedTxHash,
+        normalizedNote,
+        now,
+      ],
     );
 
-    const inserted = db.prepare('SELECT * FROM charge_payments WHERE id = ?').get(id) as any;
+    const inserted = await tx.queryOne<any>('SELECT * FROM charge_payments WHERE id = ?', [id]);
     return { row: inserted, deduplicated: false };
-  })();
-
-  if (!deduplicated) {
-    queueGistPush();
-  }
+  });
 
   const summary = await getAccruedChargesSummary({ includeDisabledWallets: false });
   return { payment: mapPaymentRow(savedRow), summary };
@@ -294,10 +275,8 @@ export async function reviewChargePaymentClaim(input: {
   adminNote?: string;
   reviewedBy?: string;
 }): Promise<{ payment: ChargePaymentRecord; summary: AccruedChargesSummary }> {
-  await ensureGistSynced();
-
-  const reviewTx = db.transaction(() => {
-    const existing = db.prepare('SELECT * FROM charge_payments WHERE id = ?').get(input.id) as any;
+  await dbTransaction(async (tx) => {
+    const existing = await tx.queryOne<any>('SELECT * FROM charge_payments WHERE id = ?', [input.id]);
     if (!existing) {
       throw new Error('Payment submission record not found.');
     }
@@ -317,28 +296,29 @@ export async function reviewChargePaymentClaim(input: {
       finalAmount = parsed;
     }
 
-    db.prepare(`
-      UPDATE charge_payments
-      SET amount = ?,
-          status = ?,
-          admin_note = ?,
-          reviewed_at = ?,
-          reviewed_by = ?
-      WHERE id = ? AND status = 'pending'
-    `).run(
-      finalAmount,
-      nextStatus,
-      input.adminNote?.trim() || null,
-      now,
-      input.reviewedBy || 'Declan Salo (Admin)',
-      input.id
+    const res = await tx.execute(
+      `UPDATE charge_payments
+       SET amount = ?,
+           status = ?,
+           admin_note = ?,
+           reviewed_at = ?,
+           reviewed_by = ?
+       WHERE id = ? AND status = 'pending'`,
+      [
+        finalAmount,
+        nextStatus,
+        input.adminNote?.trim() || null,
+        now,
+        input.reviewedBy || 'Declan Salo (Admin)',
+        input.id,
+      ],
     );
+    if (res.changes !== 1) {
+      throw new Error(`Payment ${existing.id} was already processed.`);
+    }
   });
 
-  reviewTx();
-  queueGistPush();
-
-  const updatedRow = db.prepare('SELECT * FROM charge_payments WHERE id = ?').get(input.id) as any;
+  const updatedRow = await dbQueryOne<any>('SELECT * FROM charge_payments WHERE id = ?', [input.id]);
   const summary = await getAccruedChargesSummary({ includeDisabledWallets: true });
   return { payment: mapPaymentRow(updatedRow), summary };
 }

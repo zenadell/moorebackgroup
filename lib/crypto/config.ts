@@ -1,8 +1,7 @@
-import db from '@/lib/db';
+import { dbQueryAll, dbTransaction } from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
 import { validateCryptoAddress } from './blockchain';
-import { queueGistPush } from '@/lib/db/gistClient';
 
 export interface CryptoVaultAddresses {
   USDT_TRC20: string;
@@ -28,7 +27,9 @@ const DEFAULT_ADDRESSES: CryptoVaultAddresses = {
 
 export async function getCryptoConfig(): Promise<CryptoConfigFile> {
   try {
-    const rows = db.prepare('SELECT asset, address, updated_at, updated_by FROM vault_addresses').all() as Array<{
+    const rows = (await dbQueryAll(
+      'SELECT asset, address, updated_at, updated_by FROM vault_addresses',
+    )) as Array<{
       asset: string;
       address: string;
       updated_at: number;
@@ -97,26 +98,20 @@ export async function updateCryptoConfig(
   const now = Date.now();
 
   try {
-    const upsertStmt = db.prepare(`
-      INSERT INTO vault_addresses (asset, address, updated_at, updated_by)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(asset) DO UPDATE SET
-        address = excluded.address,
-        updated_at = excluded.updated_at,
-        updated_by = excluded.updated_by
-    `);
-
-    const updateMany = db.transaction((entries: [string, string][]) => {
+    const entries = Object.entries(newAddresses).filter(([_, addr]) => Boolean(addr)) as [string, string][];
+    await dbTransaction(async (tx) => {
       for (const [asset, address] of entries) {
-        upsertStmt.run(asset, address, now, updatedBy);
+        await tx.execute(
+          `INSERT INTO vault_addresses (asset, address, updated_at, updated_by)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(asset) DO UPDATE SET
+             address = excluded.address,
+             updated_at = excluded.updated_at,
+             updated_by = excluded.updated_by`,
+          [asset, address, now, updatedBy],
+        );
       }
     });
-
-    const entries = Object.entries(newAddresses).filter(([_, addr]) => Boolean(addr)) as [string, string][];
-    updateMany(entries);
-
-    // Sync to GitHub Gist if configured
-    queueGistPush();
 
     const updatedConfig = await getCryptoConfig();
 

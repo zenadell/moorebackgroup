@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ensureGistSynced } from '@/lib/db/gistClient';
 import {
   addLiquidationRecord,
   getHoldingShareAdjustments,
@@ -13,7 +12,6 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    await ensureGistSynced();
     const [liquidatedBalance, positions, adjustments, buybacks] = await Promise.all([
       getLiquidatedBalance(),
       getLiquidatedPositions(),
@@ -37,7 +35,6 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    await ensureGistSynced();
     const body = await req.json();
     const { ticker, companyName, sharesLiquidated, sharePrice, payoutAmount, currency } = body;
 

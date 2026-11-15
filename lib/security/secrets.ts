@@ -4,25 +4,39 @@ import path from 'path';
 
 const ENCRYPTED_PREFIX = 'enc:v1:';
 const KEY_SALT = 'moorebach-admin-secret-vault-v1';
+const DEFAULT_APP_VAULT_SECRET = 'moorebachgroup_inst_clearance_secret_key_88429';
+const LEGACY_GIST_ID = '9c6d4ea0306115e7fdbec38285ad60ee';
 
 /**
  * Derives the primary 256-bit AES key.
  *
- * The key MUST be identical on localhost and on the cloud deployment, because encrypted
- * secrets are stored in the shared GitHub Gist database and decrypted wherever the app runs.
- * Priority: MOBACK_SECRETS_KEY (recommended) -> GITHUB_GIST_ID (always shared by every
- * deployment that reads the same Gist database).
+ * Uses MOBACK_SECRETS_KEY or JWT_SECRET/AUTH_SECRET when set, and falls back to the
+ * shared application secret so localhost and Vercel Postgres deployments always match.
  */
 function deriveAesKey(): Buffer {
   const explicitKey = (process.env.MOBACK_SECRETS_KEY || '').trim();
-  const gistId = (process.env.GITHUB_GIST_ID || '').trim();
+  const authSecret = (process.env.JWT_SECRET || process.env.AUTH_SECRET || '').trim();
   const stableMaterial = explicitKey
     ? `explicit:${explicitKey}`
-    : gistId
-      ? `gist:${gistId}`
-      : 'moback-local-fallback-material';
+    : authSecret
+      ? `auth:${authSecret}`
+      : `pg:${DEFAULT_APP_VAULT_SECRET}`;
 
   return crypto.createHash('sha256').update(`${KEY_SALT}:stable:${stableMaterial}`).digest();
+}
+
+function deriveGistAesKey(gistId: string): Buffer {
+  return crypto
+    .createHash('sha256')
+    .update(`${KEY_SALT}:stable:gist:${gistId}`)
+    .digest();
+}
+
+function deriveLocalFallbackAesKey(): Buffer {
+  return crypto
+    .createHash('sha256')
+    .update(`${KEY_SALT}:stable:moback-local-fallback-material`)
+    .digest();
 }
 
 /**
@@ -90,10 +104,17 @@ export function decryptSecret(stored?: string | null): string {
   if (parts.length !== 3) return '';
   const [ivHex, tagHex, dataHex] = parts;
 
-  return (
-    tryDecryptWithKey(deriveAesKey(), ivHex, tagHex, dataHex) ||
-    tryDecryptWithKey(deriveLegacyAesKey(), ivHex, tagHex, dataHex)
-  );
+  const envGistId = (process.env.GITHUB_GIST_ID || '').trim();
+  const candidateKeys: Buffer[] = [deriveAesKey()];
+  if (envGistId) candidateKeys.push(deriveGistAesKey(envGistId));
+  if (envGistId !== LEGACY_GIST_ID) candidateKeys.push(deriveGistAesKey(LEGACY_GIST_ID));
+  candidateKeys.push(deriveLocalFallbackAesKey(), deriveLegacyAesKey());
+
+  for (const key of candidateKeys) {
+    const out = tryDecryptWithKey(key, ivHex, tagHex, dataHex);
+    if (out) return out;
+  }
+  return '';
 }
 
 /**

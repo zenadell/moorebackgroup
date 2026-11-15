@@ -52,7 +52,7 @@ export function VaultsTab({
           Custody Vault Deposit Addresses
         </h2>
         <p style={{ fontSize: '12.5px', color: '#6b7280', margin: 0 }}>
-          Served immediately inside the user deposit modal and persisted across SQLite &amp; GitHub Gist.
+          Served immediately inside the user deposit modal and persisted across deployments.
         </p>
       </div>
 

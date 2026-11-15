@@ -1,7 +1,6 @@
-import db from '@/lib/db';
+import { dbExecute, dbQueryAll, dbQueryOne, dbTransaction } from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
-import { queueGistPush } from '@/lib/db/gistClient';
 
 export interface AdminWithdrawalConfig {
   minAmount: number;
@@ -183,10 +182,10 @@ export function normalizeWithdrawalConfig(
 // -----------------------------------------------------------------
 export async function getAdminConfig(): Promise<AdminConfigFile> {
   try {
-    const row = db.prepare('SELECT value, updated_at FROM admin_settings WHERE key = ?').get('withdrawals') as {
-      value: string;
-      updated_at: number;
-    } | undefined;
+    const row = await dbQueryOne<{ value: string; updated_at: number }>(
+      'SELECT value, updated_at FROM admin_settings WHERE key = ?',
+      ['withdrawals'],
+    );
 
     if (row && row.value) {
       const parsedWithdrawals = JSON.parse(row.value) as Partial<AdminWithdrawalConfig> & Record<string, any>;
@@ -229,24 +228,23 @@ export async function updateAdminConfig(
   };
 
   try {
-    db.prepare(`
-      INSERT INTO admin_settings (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at
-    `).run('withdrawals', JSON.stringify(merged.withdrawals), merged.lastUpdated);
-
-    queueGistPush();
+    await dbExecute(
+      `INSERT INTO admin_settings (key, value, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_at = excluded.updated_at`,
+      ['withdrawals', JSON.stringify(merged.withdrawals), merged.lastUpdated],
+    );
   } catch (e: any) {
-    console.error('Error updating admin settings in SQLite:', e);
+    console.error('Error updating admin settings:', e);
   }
 
   return merged;
 }
 
 // -----------------------------------------------------------------
-// Withdrawals Logging & Audit (SQLite Powered)
+// Withdrawals Logging & Audit
 // -----------------------------------------------------------------
 export function generateRealisticTxHash(network?: string): string {
   const chars = '0123456789abcdef';
@@ -259,13 +257,13 @@ export function generateRealisticTxHash(network?: string): string {
 
 export async function getWithdrawalRequests(): Promise<WithdrawalRequestRecord[]> {
   try {
-    const rows = db.prepare(`
+    const rows = await dbQueryAll<any>(`
       SELECT id, timestamp, amount, rail, beneficiary, destination, status, status_reason, ip_address, device_name,
              asset, network, wallet_address, user_email, tx_hash, transferred_at, user_acknowledged
       FROM withdrawal_requests
       ORDER BY timestamp DESC
       LIMIT 100
-    `).all() as any[];
+    `);
 
     return rows.map((r) => ({
       id: r.id,
@@ -306,34 +304,33 @@ export async function logWithdrawalAttempt(
   };
 
   try {
-    db.prepare(`
-      INSERT INTO withdrawal_requests
-      (id, timestamp, amount, rail, beneficiary, destination, status, status_reason, ip_address, device_name,
-       asset, network, wallet_address, user_email, tx_hash, transferred_at, user_acknowledged)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.id,
-      record.timestamp,
-      record.amount,
-      record.rail,
-      record.beneficiary,
-      record.destination,
-      record.status,
-      record.statusReason || null,
-      record.ipAddress || null,
-      record.deviceName || null,
-      record.asset || 'USDT',
-      record.network || 'TRC20',
-      record.walletAddress || record.destination,
-      record.userEmail || 'declansalo1@gmail.com',
-      record.txHash || null,
-      record.transferredAt || null,
-      record.userAcknowledged ? 1 : 0
+    await dbExecute(
+      `INSERT INTO withdrawal_requests
+       (id, timestamp, amount, rail, beneficiary, destination, status, status_reason, ip_address, device_name,
+        asset, network, wallet_address, user_email, tx_hash, transferred_at, user_acknowledged)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.id,
+        record.timestamp,
+        record.amount,
+        record.rail,
+        record.beneficiary,
+        record.destination,
+        record.status,
+        record.statusReason || null,
+        record.ipAddress || null,
+        record.deviceName || null,
+        record.asset || 'USDT',
+        record.network || 'TRC20',
+        record.walletAddress || record.destination,
+        record.userEmail || 'declansalo1@gmail.com',
+        record.txHash || null,
+        record.transferredAt || null,
+        record.userAcknowledged ? 1 : 0,
+      ],
     );
-
-    queueGistPush();
   } catch (e) {
-    console.error('Failed to log withdrawal in SQLite:', e);
+    console.error('Failed to log withdrawal:', e);
   }
 
   return record;
@@ -346,20 +343,17 @@ export async function updateWithdrawalStatus(
   txHash?: string
 ): Promise<boolean> {
   try {
-    const info = db.prepare(`
-      UPDATE withdrawal_requests
-      SET status = ?,
-          status_reason = ?,
-          tx_hash = COALESCE(?, tx_hash),
-          transferred_at = CASE WHEN ? = 'transferred' THEN COALESCE(transferred_at, ?) ELSE transferred_at END
-      WHERE id = ?
-    `).run(status, reason || null, txHash || null, status, Date.now(), id);
+    const info = await dbExecute(
+      `UPDATE withdrawal_requests
+       SET status = ?,
+           status_reason = ?,
+           tx_hash = COALESCE(?, tx_hash),
+           transferred_at = CASE WHEN ? = 'transferred' THEN COALESCE(transferred_at, ?) ELSE transferred_at END
+       WHERE id = ?`,
+      [status, reason || null, txHash || null, status, Date.now(), id],
+    );
 
-    if (info.changes > 0) {
-      queueGistPush();
-      return true;
-    }
-    return false;
+    return info.changes > 0;
   } catch {
     return false;
   }
@@ -371,22 +365,23 @@ export async function markWithdrawalTransferred(
   note?: string
 ): Promise<WithdrawalRequestRecord | null> {
   try {
-    const existing = db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as any;
+    const existing = await dbQueryOne<any>('SELECT * FROM withdrawal_requests WHERE id = ?', [id]);
     if (!existing) return null;
 
     const finalTxHash = txHash?.trim() || generateRealisticTxHash(existing.network);
     const transferredAt = Date.now();
     const finalReason = note || 'Disbursement transferred by Institutional Treasury Administrator';
 
-    db.prepare(`
-      UPDATE withdrawal_requests
-      SET status = 'transferred',
-          status_reason = ?,
-          tx_hash = ?,
-          transferred_at = ?,
-          user_acknowledged = 0
-      WHERE id = ?
-    `).run(finalReason, finalTxHash, transferredAt, id);
+    await dbExecute(
+      `UPDATE withdrawal_requests
+       SET status = 'transferred',
+           status_reason = ?,
+           tx_hash = ?,
+           transferred_at = ?,
+           user_acknowledged = 0
+       WHERE id = ?`,
+      [finalReason, finalTxHash, transferredAt, id],
+    );
 
     // Record in transaction ledger
     try {
@@ -401,8 +396,6 @@ export async function markWithdrawalTransferred(
         note: `Disbursement transferred to ${existing.wallet_address || existing.destination}`,
       });
     } catch {}
-
-    queueGistPush();
 
     return {
       id: existing.id,
@@ -431,23 +424,20 @@ export async function markWithdrawalTransferred(
 
 export async function acknowledgeWithdrawal(id: string): Promise<boolean> {
   try {
-    const res = db.prepare('UPDATE withdrawal_requests SET user_acknowledged = 1 WHERE id = ?').run(id);
-    if (res.changes > 0) {
-      queueGistPush();
-      return true;
-    }
+    const res = await dbExecute('UPDATE withdrawal_requests SET user_acknowledged = 1 WHERE id = ?', [id]);
+    return res.changes > 0;
   } catch {}
   return false;
 }
 
 export async function getLatestTransferredUnacknowledgedWithdrawal(): Promise<WithdrawalRequestRecord | null> {
   try {
-    const row = db.prepare(`
+    const row = await dbQueryOne<any>(`
       SELECT * FROM withdrawal_requests
       WHERE status = 'transferred' AND (user_acknowledged IS NULL OR user_acknowledged = 0)
       ORDER BY transferred_at DESC
       LIMIT 1
-    `).get() as any;
+    `);
 
     if (!row) return null;
 
@@ -480,12 +470,12 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 export async function clearWithdrawalCooldown(): Promise<boolean> {
   try {
     const twentyFiveHoursAgo = Date.now() - 25 * 60 * 60 * 1000;
-    db.prepare(`
-      UPDATE withdrawal_requests
-      SET timestamp = ?
-      WHERE timestamp > ?
-    `).run(twentyFiveHoursAgo, twentyFiveHoursAgo);
-    queueGistPush();
+    await dbExecute(
+      `UPDATE withdrawal_requests
+       SET timestamp = ?
+       WHERE timestamp > ?`,
+      [twentyFiveHoursAgo, twentyFiveHoursAgo],
+    );
     return true;
   } catch (e) {
     console.error('Failed to clear withdrawal cooldown:', e);
@@ -506,12 +496,12 @@ export async function isWithdrawalLockdownActive(): Promise<{
       return { isLocked: false, remainingMs: 0, remainingFormatted: '0h 0m 0s', lastWithdrawal: null };
     }
 
-    const row = db.prepare(`
+    const row = await dbQueryOne<any>(`
       SELECT * FROM withdrawal_requests
       WHERE status IN ('pending', 'transferred', 'approved')
       ORDER BY timestamp DESC
       LIMIT 1
-    `).get() as any;
+    `);
 
     if (!row) {
       return { isLocked: false, remainingMs: 0, remainingFormatted: '0h 0m 0s', lastWithdrawal: null };
@@ -558,12 +548,13 @@ export async function isWithdrawalLockdownActive(): Promise<{
 export async function getDailyWithdrawnTotal(): Promise<number> {
   try {
     const windowStart = Date.now() - TWENTY_FOUR_HOURS_MS;
-    const row = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) AS total
-      FROM withdrawal_requests
-      WHERE status IN ('pending', 'transferred', 'approved', 'completed')
-        AND timestamp >= ?
-    `).get(windowStart) as { total: number } | undefined;
+    const row = await dbQueryOne<{ total: number }>(
+      `SELECT COALESCE(SUM(amount), 0) AS total
+       FROM withdrawal_requests
+       WHERE status IN ('pending', 'transferred', 'approved', 'completed')
+         AND timestamp >= ?`,
+      [windowStart],
+    );
     return Number((row?.total || 0).toFixed(2));
   } catch {
     return 0;
@@ -603,12 +594,12 @@ export async function getPostLockdownDeclineStatus(): Promise<{
     }
 
     // Check if there is a previous withdrawal
-    const priorWithdrawal = db.prepare(`
+    const priorWithdrawal = await dbQueryOne<any>(`
       SELECT * FROM withdrawal_requests
       WHERE status IN ('pending', 'transferred', 'approved', 'completed')
       ORDER BY timestamp DESC
       LIMIT 1
-    `).get() as any;
+    `);
 
     if (!priorWithdrawal) {
       return {
@@ -661,11 +652,11 @@ export async function getPostLockdownDeclineStatus(): Promise<{
 // -----------------------------------------------------------------
 export async function getLiquidatedPositions(): Promise<LiquidatedPositionRecord[]> {
   try {
-    const rows = db.prepare(`
+    const rows = await dbQueryAll<any>(`
       SELECT id, ticker, company_name, shares_liquidated, share_price, payout_amount, currency, timestamp
       FROM liquidated_positions
       ORDER BY timestamp DESC
-    `).all() as any[];
+    `);
 
     return rows.map((r) => ({
       id: r.id,
@@ -684,13 +675,19 @@ export async function getLiquidatedPositions(): Promise<LiquidatedPositionRecord
 
 export async function getLiquidatedBalance(): Promise<number> {
   try {
-    const liquidatedRow = db.prepare('SELECT COALESCE(SUM(payout_amount), 0) AS total FROM liquidated_positions').get() as { total: number };
+    const liquidatedRow = await dbQueryOne<{ total: number }>(
+      'SELECT COALESCE(SUM(payout_amount), 0) AS total FROM liquidated_positions',
+    );
     const totalLiquidated = liquidatedRow?.total || 0;
 
-    const withdrawalRow = db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM withdrawal_requests WHERE status IN ('pending', 'transferred', 'approved')").get() as { total: number };
+    const withdrawalRow = await dbQueryOne<{ total: number }>(
+      "SELECT COALESCE(SUM(amount), 0) AS total FROM withdrawal_requests WHERE status IN ('pending', 'transferred', 'approved')",
+    );
     const totalWithdrawn = withdrawalRow?.total || 0;
 
-    const buybackRow = db.prepare('SELECT COALESCE(SUM(amount_spent), 0) AS total FROM share_buybacks').get() as { total: number };
+    const buybackRow = await dbQueryOne<{ total: number }>(
+      'SELECT COALESCE(SUM(amount_spent), 0) AS total FROM share_buybacks',
+    );
     const totalBoughtBack = buybackRow?.total || 0;
 
     const netAvailable = Math.max(0, totalLiquidated - totalWithdrawn - totalBoughtBack);
@@ -702,11 +699,11 @@ export async function getLiquidatedBalance(): Promise<number> {
 
 export async function getShareBuybacks(): Promise<ShareBuybackRecord[]> {
   try {
-    const rows = db.prepare(`
+    const rows = await dbQueryAll<any>(`
       SELECT id, ticker, company_name, shares_purchased, share_price, amount_spent, currency, timestamp
       FROM share_buybacks
       ORDER BY timestamp DESC
-    `).all() as any[];
+    `);
 
     return rows.map((r) => ({
       id: r.id,
@@ -725,13 +722,13 @@ export async function getShareBuybacks(): Promise<ShareBuybackRecord[]> {
 
 export async function getHoldingShareAdjustments(): Promise<Record<string, number>> {
   try {
-    const rows = db.prepare(`
-      SELECT ticker, shares_delta FROM holding_share_adjustments
-    `).all() as Array<{ ticker: string; shares_delta: number }>;
+    const rows = await dbQueryAll<{ ticker: string; shares_delta: number }>(
+      'SELECT ticker, shares_delta FROM holding_share_adjustments',
+    );
 
     const map: Record<string, number> = {};
     for (const r of rows) {
-      map[r.ticker] = Number(r.shares_delta || 0);
+      map[r.ticker] = Number(Number(r.shares_delta || 0).toFixed(4));
     }
     return map;
   } catch {
@@ -768,16 +765,16 @@ export async function executeShareBuyback(data: {
     timestamp: now,
   };
 
-  const runBuybackTx = db.transaction(() => {
-    const liquidatedRow = db
-      .prepare('SELECT COALESCE(SUM(payout_amount), 0) AS total FROM liquidated_positions')
-      .get() as { total: number };
-    const withdrawalRow = db
-      .prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM withdrawal_requests WHERE status IN ('pending', 'transferred', 'approved')")
-      .get() as { total: number };
-    const buybackRow = db
-      .prepare('SELECT COALESCE(SUM(amount_spent), 0) AS total FROM share_buybacks')
-      .get() as { total: number };
+  await dbTransaction(async (tx) => {
+    const liquidatedRow = await tx.queryOne<{ total: number }>(
+      'SELECT COALESCE(SUM(payout_amount), 0) AS total FROM liquidated_positions',
+    );
+    const withdrawalRow = await tx.queryOne<{ total: number }>(
+      "SELECT COALESCE(SUM(amount), 0) AS total FROM withdrawal_requests WHERE status IN ('pending', 'transferred', 'approved')",
+    );
+    const buybackRow = await tx.queryOne<{ total: number }>(
+      'SELECT COALESCE(SUM(amount_spent), 0) AS total FROM share_buybacks',
+    );
 
     const available = Number(
       Math.max(0, (liquidatedRow?.total || 0) - (withdrawalRow?.total || 0) - (buybackRow?.total || 0)).toFixed(2)
@@ -796,51 +793,52 @@ export async function executeShareBuyback(data: {
     item.amountSpent = Number(cappedSpend.toFixed(2));
     item.sharesPurchased = Number((item.amountSpent / sharePrice).toFixed(4));
 
-    db.prepare(`
-      INSERT INTO share_buybacks
-      (id, ticker, company_name, shares_purchased, share_price, amount_spent, currency, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      item.id,
-      item.ticker,
-      item.companyName,
-      item.sharesPurchased,
-      item.sharePrice,
-      item.amountSpent,
-      item.currency,
-      item.timestamp
+    await tx.execute(
+      `INSERT INTO share_buybacks
+       (id, ticker, company_name, shares_purchased, share_price, amount_spent, currency, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.ticker,
+        item.companyName,
+        item.sharesPurchased,
+        item.sharePrice,
+        item.amountSpent,
+        item.currency,
+        item.timestamp,
+      ],
     );
 
-    db.prepare(`
-      INSERT INTO holding_share_adjustments (ticker, shares_delta, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(ticker) DO UPDATE SET
-        shares_delta = ROUND(holding_share_adjustments.shares_delta + excluded.shares_delta, 4),
-        updated_at = excluded.updated_at
-    `).run(item.ticker, item.sharesPurchased, now);
+    await tx.execute(
+      `INSERT INTO holding_share_adjustments (ticker, shares_delta, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(ticker) DO UPDATE SET
+         shares_delta = holding_share_adjustments.shares_delta + excluded.shares_delta,
+         updated_at = excluded.updated_at`,
+      [item.ticker, item.sharesPurchased, now],
+    );
 
-    db.prepare(`
-      INSERT INTO transaction_ledger
-      (id, timestamp, type, asset, network, amount, tx_id, status, confirmations, vault_address, credited, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      `tx_${now}_${Math.random().toString(36).slice(2, 6)}`,
-      now,
-      'buyback',
-      item.ticker,
-      null,
-      item.amountSpent,
-      item.id,
-      'confirmed',
-      1,
-      null,
-      1,
-      `Share Buyback: +${item.sharesPurchased.toLocaleString('en-US', { maximumFractionDigits: 4 })} shares of ${item.ticker} (${item.companyName}) at $${item.sharePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    await tx.execute(
+      `INSERT INTO transaction_ledger
+       (id, timestamp, type, asset, network, amount, tx_id, status, confirmations, vault_address, credited, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        `tx_${now}_${Math.random().toString(36).slice(2, 6)}`,
+        now,
+        'buyback',
+        item.ticker,
+        null,
+        item.amountSpent,
+        item.id,
+        'confirmed',
+        1,
+        null,
+        1,
+        `Share Buyback: +${item.sharesPurchased.toLocaleString('en-US', { maximumFractionDigits: 4 })} shares of ${item.ticker} (${item.companyName}) at $${item.sharePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      ],
     );
   });
 
-  runBuybackTx();
-  queueGistPush();
   return item;
 }
 
@@ -864,28 +862,32 @@ export async function addLiquidationRecord(data: {
   };
 
   try {
-    db.prepare(`
-      INSERT INTO liquidated_positions
-      (id, ticker, company_name, shares_liquidated, share_price, payout_amount, currency, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      item.id,
-      item.ticker,
-      item.companyName,
-      item.sharesLiquidated,
-      item.sharePrice,
-      item.payoutAmount,
-      item.currency,
-      item.timestamp
-    );
+    await dbTransaction(async (tx) => {
+      await tx.execute(
+        `INSERT INTO liquidated_positions
+         (id, ticker, company_name, shares_liquidated, share_price, payout_amount, currency, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.id,
+          item.ticker,
+          item.companyName,
+          item.sharesLiquidated,
+          item.sharePrice,
+          item.payoutAmount,
+          item.currency,
+          item.timestamp,
+        ],
+      );
 
-    db.prepare(`
-      INSERT INTO holding_share_adjustments (ticker, shares_delta, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(ticker) DO UPDATE SET
-        shares_delta = ROUND(holding_share_adjustments.shares_delta + excluded.shares_delta, 4),
-        updated_at = excluded.updated_at
-    `).run(item.ticker, -item.sharesLiquidated, item.timestamp);
+      await tx.execute(
+        `INSERT INTO holding_share_adjustments (ticker, shares_delta, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(ticker) DO UPDATE SET
+           shares_delta = holding_share_adjustments.shares_delta + excluded.shares_delta,
+           updated_at = excluded.updated_at`,
+        [item.ticker, -item.sharesLiquidated, item.timestamp],
+      );
+    });
 
     // Record in transaction ledger
     try {
@@ -898,26 +900,24 @@ export async function addLiquidationRecord(data: {
         note: `Asset Liquidation: ${item.sharesLiquidated.toLocaleString('en-US', { maximumFractionDigits: 4 })} shares of ${item.ticker} (${item.companyName}) into Liquid Reserves`,
       });
     } catch {}
-
-    queueGistPush();
   } catch (e) {
-    console.error('Failed to save liquidated position in SQLite:', e);
+    console.error('Failed to save liquidated position:', e);
   }
 
   return item;
 }
 
 // -----------------------------------------------------------------
-// Transactions Ledger (SQLite Powered)
+// Transactions Ledger
 // -----------------------------------------------------------------
 export async function getTransactionsLedger(): Promise<TransactionLedgerRecord[]> {
   try {
-    const rows = db.prepare(`
+    const rows = await dbQueryAll<any>(`
       SELECT id, timestamp, type, asset, network, amount, tx_id, status, confirmations, vault_address, credited, note
       FROM transaction_ledger
       ORDER BY timestamp DESC
       LIMIT 100
-    `).all() as any[];
+    `);
 
     return rows.map((r) => ({
       id: r.id,
@@ -948,26 +948,27 @@ export async function recordLedgerTransaction(
   };
 
   try {
-    db.prepare(`
-      INSERT INTO transaction_ledger
-      (id, timestamp, type, asset, network, amount, tx_id, status, confirmations, vault_address, credited, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      item.id,
-      item.timestamp,
-      item.type,
-      item.asset,
-      item.network || null,
-      item.amount,
-      item.txId || null,
-      item.status,
-      item.confirmations || 0,
-      item.vaultAddress || null,
-      item.credited ? 1 : 0,
-      item.note || null
+    await dbExecute(
+      `INSERT INTO transaction_ledger
+       (id, timestamp, type, asset, network, amount, tx_id, status, confirmations, vault_address, credited, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.timestamp,
+        item.type,
+        item.asset,
+        item.network || null,
+        item.amount,
+        item.txId || null,
+        item.status,
+        item.confirmations || 0,
+        item.vaultAddress || null,
+        item.credited ? 1 : 0,
+        item.note || null,
+      ],
     );
   } catch (e) {
-    console.error('Failed to record ledger transaction in SQLite:', e);
+    console.error('Failed to record ledger transaction:', e);
   }
 
   return item;

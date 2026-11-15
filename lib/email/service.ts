@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import db from '@/lib/db';
-import { ensureGistSynced, queueGistPush } from '@/lib/db/gistClient';
+import { dbExecute, dbQueryAll, dbQueryOne } from '@/lib/db';
 import { getTwoFactorSettings, clearResendApiKey } from '@/lib/auth/twoFactor';
 import { decryptSecret } from '@/lib/security/secrets';
 import {
@@ -56,12 +55,11 @@ export interface SmtpSummary {
 }
 
 async function resolveSmtpCredentials() {
-  await ensureGistSynced();
   const settings = await getTwoFactorSettings();
 
-  const existingRow = db
-    .prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1")
-    .get() as any;
+  const existingRow = await dbQueryOne<{ value?: string }>(
+    "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+  );
   let storedPass = '';
   if (existingRow?.value) {
     try {
@@ -70,7 +68,7 @@ async function resolveSmtpCredentials() {
     } catch {}
   }
 
-  const resendApiKey = settings.resendStatus === 'invalid' ? '' : resolveResendApiKey();
+  const resendApiKey = settings.resendStatus === 'invalid' ? '' : await resolveResendApiKey();
   const rawHost = (settings.smtpHost || process.env.SMTP_HOST || '').trim();
   const rawUser = (settings.smtpUser || process.env.SMTP_USER || '').trim();
   const isPersonalOrGmail =
@@ -141,11 +139,11 @@ export async function getSmtpCapabilitySummary(): Promise<SmtpSummary> {
 }
 
 export async function getEmailDispatchHistory(limit = 40): Promise<SentEmailRecord[]> {
-  await ensureGistSynced();
   try {
-    const rows = db
-      .prepare('SELECT * FROM sent_emails ORDER BY sent_at DESC LIMIT ?')
-      .all(limit) as any[];
+    const rows = (await dbQueryAll(
+      'SELECT * FROM sent_emails ORDER BY sent_at DESC LIMIT ?',
+      [limit],
+    )) as any[];
 
     return rows.map((r) => ({
       id: r.id,
@@ -215,7 +213,7 @@ export async function sendAdminInstitutionalEmail(
       sentAt: now,
       sentBy,
     };
-    persistEmailRecord(record);
+    await persistEmailRecord(record);
     return { success: false, record, error: errMsg };
   }
 
@@ -318,7 +316,7 @@ export async function sendAdminInstitutionalEmail(
     sentBy,
   };
 
-  persistEmailRecord(record);
+  await persistEmailRecord(record);
 
   if (status === 'failed') {
     return { success: false, record, error: errorMessage || 'Email dispatch failed' };
@@ -326,35 +324,54 @@ export async function sendAdminInstitutionalEmail(
   return { success: true, record };
 }
 
-function persistEmailRecord(record: SentEmailRecord) {
+async function persistEmailRecord(record: SentEmailRecord) {
   try {
-    db.prepare(`
-      INSERT OR REPLACE INTO sent_emails
+    await dbExecute(
+      `INSERT INTO sent_emails
       (id, to_email, reply_to, sender_name, subject, template_id, classification, greeting, body_text,
        summary_rows_json, cta_label, cta_url, sign_off, html_preview, status, message_id, error_message, sent_at, sent_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.id,
-      record.toEmail,
-      record.replyTo,
-      record.senderName,
-      record.subject,
-      record.templateId,
-      record.classification,
-      record.greeting,
-      record.bodyText,
-      record.summaryRowsJson,
-      record.ctaLabel,
-      record.ctaUrl,
-      record.signOff,
-      record.htmlPreview,
-      record.status,
-      record.messageId,
-      record.errorMessage,
-      record.sentAt,
-      record.sentBy
+      ON CONFLICT(id) DO UPDATE SET
+        to_email = excluded.to_email,
+        reply_to = excluded.reply_to,
+        sender_name = excluded.sender_name,
+        subject = excluded.subject,
+        template_id = excluded.template_id,
+        classification = excluded.classification,
+        greeting = excluded.greeting,
+        body_text = excluded.body_text,
+        summary_rows_json = excluded.summary_rows_json,
+        cta_label = excluded.cta_label,
+        cta_url = excluded.cta_url,
+        sign_off = excluded.sign_off,
+        html_preview = excluded.html_preview,
+        status = excluded.status,
+        message_id = excluded.message_id,
+        error_message = excluded.error_message,
+        sent_at = excluded.sent_at,
+        sent_by = excluded.sent_by`,
+      [
+        record.id,
+        record.toEmail,
+        record.replyTo,
+        record.senderName,
+        record.subject,
+        record.templateId,
+        record.classification,
+        record.greeting,
+        record.bodyText,
+        record.summaryRowsJson,
+        record.ctaLabel,
+        record.ctaUrl,
+        record.signOff,
+        record.htmlPreview,
+        record.status,
+        record.messageId,
+        record.errorMessage,
+        record.sentAt,
+        record.sentBy,
+      ],
     );
-    queueGistPush(800);
   } catch (err) {
     console.error('[EmailService] Failed to persist email dispatch record:', err);
   }

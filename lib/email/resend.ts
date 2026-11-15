@@ -1,4 +1,4 @@
-import db from '@/lib/db';
+import { dbQueryOne } from '@/lib/db';
 import { decryptSecret } from '@/lib/security/secrets';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
@@ -59,11 +59,11 @@ export function maskResendKey(key?: string | null): string {
 /**
  * Resolves the Resend API key from SQLite admin settings first, then environment variables.
  */
-export function resolveResendApiKey(): string {
+export async function resolveResendApiKey(): Promise<string> {
   try {
-    const row = db
-      .prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1")
-      .get() as { value?: string } | undefined;
+    const row = await dbQueryOne<{ value?: string }>(
+      "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+    );
     if (row?.value) {
       const parsed = JSON.parse(row.value);
       const decrypted = decryptSecret(parsed?.resendApiKey);
@@ -159,7 +159,7 @@ export async function verifyResendApiKey(apiKey: string): Promise<ResendKeyVerif
  * Sends a transactional email through Resend's REST API over HTTPS.
  */
 export async function sendViaResend(params: ResendSendParams): Promise<ResendSendResult> {
-  const apiKey = (params.apiKey || resolveResendApiKey()).trim();
+  const apiKey = (params.apiKey || (await resolveResendApiKey())).trim();
   if (!apiKey) {
     return { success: false, error: 'Resend API key is not configured.' };
   }

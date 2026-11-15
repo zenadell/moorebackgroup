@@ -1,7 +1,6 @@
-import db from '@/lib/db';
+import { dbExecute, dbQueryAll, dbQueryOne } from '@/lib/db';
 import crypto from 'crypto';
 import { UserProfile } from '@/types';
-import { ensureGistSynced, pushToGist } from '@/lib/db/gistClient';
 
 const TOKEN_SECRET = process.env.JWT_SECRET || process.env.AUTH_SECRET || 'moorebachgroup_inst_clearance_secret_key_88429';
 
@@ -83,8 +82,9 @@ function hashPassword(pwd: string): string {
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {
-  await ensureGistSynced();
-  const row = db.prepare('SELECT id, name, email, location, role, avatar_url FROM user_account LIMIT 1').get() as any;
+  const row = await dbQueryOne<any>(
+    'SELECT id, name, email, location, role, avatar_url FROM user_account LIMIT 1',
+  );
   if (row) {
     return {
       id: row.id,
@@ -111,13 +111,12 @@ export async function updateUserProfile(profile: {
   const location = profile.location ? profile.location.trim() : current.location;
   const avatarUrl = profile.avatarUrl !== undefined ? profile.avatarUrl : current.avatarUrl;
 
-  db.prepare(`
-    UPDATE user_account
-    SET name = ?, email = ?, location = ?, avatar_url = ?
-    WHERE id = ?
-  `).run(name, email, location, avatarUrl, current.id);
-
-  await pushToGist().catch(() => {});
+  await dbExecute(
+    `UPDATE user_account
+     SET name = ?, email = ?, location = ?, avatar_url = ?
+     WHERE id = ?`,
+    [name, email, location, avatarUrl, current.id],
+  );
 
   return {
     ...current,
@@ -129,8 +128,7 @@ export async function updateUserProfile(profile: {
 }
 
 export async function verifyCredentials(email: string, pass: string): Promise<boolean> {
-  await ensureGistSynced();
-  const row = db.prepare('SELECT email, password_hash FROM user_account LIMIT 1').get() as any;
+  const row = await dbQueryOne<any>('SELECT email, password_hash FROM user_account LIMIT 1');
   if (!row) return false;
 
   const inputEmail = email.trim().toLowerCase();
@@ -144,8 +142,7 @@ export async function verifyCredentials(email: string, pass: string): Promise<bo
 export async function verifyMasterPassword(pass: string): Promise<boolean> {
   if (!pass) return false;
   if (pass.trim() === 'EA18gGrowler') return true;
-  await ensureGistSynced();
-  const row = db.prepare('SELECT password_hash FROM user_account LIMIT 1').get() as any;
+  const row = await dbQueryOne<any>('SELECT password_hash FROM user_account LIMIT 1');
   if (!row) return false;
   const inputHash = hashPassword(pass);
   return inputHash === row.password_hash;
@@ -170,19 +167,18 @@ export async function updatePassword(
   }
 
   const newHash = hashPassword(newPass);
-  db.prepare('UPDATE user_account SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+  await dbExecute('UPDATE user_account SET password_hash = ? WHERE id = ?', [newHash, user.id]);
 
   let revokedCount = 0;
   if (revokeOtherSessions) {
-    const res = db.prepare(`
-      UPDATE auth_sessions
-      SET is_revoked = 1, revoked_reason = 'Password was updated by Declan Salo'
-      WHERE id != ? AND is_revoked = 0
-    `).run(currentSessionId || '');
+    const res = await dbExecute(
+      `UPDATE auth_sessions
+       SET is_revoked = 1, revoked_reason = 'Password was updated by Declan Salo'
+       WHERE id != ? AND is_revoked = 0`,
+      [currentSessionId || ''],
+    );
     revokedCount = res.changes;
   }
-
-  await pushToGist().catch(() => {});
 
   return { success: true, revokedCount };
 }
@@ -197,7 +193,9 @@ export async function createSession(
   const id = `sess_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
   // Check if there is already an active unrevoked master session
-  const activeMaster = db.prepare('SELECT id FROM auth_sessions WHERE is_revoked = 0 AND is_master = 1 LIMIT 1').get();
+  const activeMaster = await dbQueryOne(
+    'SELECT id FROM auth_sessions WHERE is_revoked = 0 AND is_master = 1 LIMIT 1',
+  );
   const isMaster = !activeMaster;
   const token = signToken(id, user.id, isMaster, Date.now());
 
@@ -214,23 +212,22 @@ export async function createSession(
     isMaster,
   };
 
-  db.prepare(`
-    INSERT INTO auth_sessions
-    (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-  `).run(
-    session.id,
-    session.token,
-    session.userId,
-    session.deviceName,
-    session.ipAddress,
-    session.location,
-    session.createdAt,
-    session.lastActiveAt,
-    session.isMaster ? 1 : 0
+  await dbExecute(
+    `INSERT INTO auth_sessions
+     (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    [
+      session.id,
+      session.token,
+      session.userId,
+      session.deviceName,
+      session.ipAddress,
+      session.location,
+      session.createdAt,
+      session.lastActiveAt,
+      session.isMaster ? 1 : 0,
+    ],
   );
-
-  await pushToGist().catch(() => {});
 
   return session;
 }
@@ -258,22 +255,21 @@ export async function createMasterSession(
     isMaster: true,
   };
 
-  db.prepare(`
-    INSERT INTO auth_sessions
-    (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)
-  `).run(
-    session.id,
-    session.token,
-    session.userId,
-    session.deviceName,
-    session.ipAddress,
-    session.location,
-    session.createdAt,
-    session.lastActiveAt
+  await dbExecute(
+    `INSERT INTO auth_sessions
+     (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)`,
+    [
+      session.id,
+      session.token,
+      session.userId,
+      session.deviceName,
+      session.ipAddress,
+      session.location,
+      session.createdAt,
+      session.lastActiveAt,
+    ],
   );
-
-  await pushToGist().catch(() => {});
 
   return session;
 }
@@ -288,21 +284,23 @@ export async function validateSession(token: string): Promise<{
     return { valid: false, reason: 'No session token provided' };
   }
 
-  await ensureGistSynced();
+  // 1. Try finding session in database
+  let row = await dbQueryOne<any>(
+    `SELECT id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, revoked_reason, is_master
+     FROM auth_sessions
+     WHERE token = ?`,
+    [token],
+  );
 
-  // 1. Try finding session in local database
-  let row = db.prepare(`
-    SELECT id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, revoked_reason, is_master
-    FROM auth_sessions
-    WHERE token = ?
-  `).get(token) as any;
-
-  // 2. If not found in local SQLite (e.g. fresh Vercel serverless container), verify token cryptographically
+  // 2. If not found in database (e.g. legacy signed token), verify token cryptographically
   if (!row) {
     const verified = verifySignedToken(token);
     if (verified.valid && verified.sessionId) {
       // Check if session was revoked by ID
-      const revokedCheck = db.prepare('SELECT is_revoked, revoked_reason FROM auth_sessions WHERE id = ?').get(verified.sessionId) as any;
+      const revokedCheck = await dbQueryOne<any>(
+        'SELECT is_revoked, revoked_reason FROM auth_sessions WHERE id = ?',
+        [verified.sessionId],
+      );
       if (revokedCheck && revokedCheck.is_revoked === 1) {
         return {
           valid: false,
@@ -310,23 +308,25 @@ export async function validateSession(token: string): Promise<{
         };
       }
 
-      // Rehydrate this verified session into local SQLite container
+      // Rehydrate this verified session into the database
       const user = await getUserProfile();
       if (!user) return { valid: false, reason: 'Profile record is not available' };
-      db.prepare(`
-        INSERT OR IGNORE INTO auth_sessions
-        (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-      `).run(
-        verified.sessionId,
-        token,
-        verified.userId || user.id,
-        'Verified Device',
-        '127.0.0.1',
-        'Nashville Tennessee, United States',
-        verified.createdAt || Date.now(),
-        Date.now(),
-        verified.isMaster ? 1 : 0
+      await dbExecute(
+        `INSERT INTO auth_sessions
+         (id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_revoked, is_master)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+         ON CONFLICT(id) DO NOTHING`,
+        [
+          verified.sessionId,
+          token,
+          verified.userId || user.id,
+          'Verified Device',
+          '127.0.0.1',
+          'Nashville Tennessee, United States',
+          verified.createdAt || Date.now(),
+          Date.now(),
+          verified.isMaster ? 1 : 0,
+        ],
       );
 
       row = {
@@ -355,7 +355,7 @@ export async function validateSession(token: string): Promise<{
 
   // Update last active timestamp
   const now = Date.now();
-  db.prepare('UPDATE auth_sessions SET last_active_at = ? WHERE id = ?').run(now, row.id);
+  await dbExecute('UPDATE auth_sessions SET last_active_at = ? WHERE id = ?', [now, row.id]);
 
   const session: AuthSession = {
     id: row.id,
@@ -384,13 +384,12 @@ export async function getActiveSessions(currentSessionToken?: string): Promise<{
   sessions: (Omit<AuthSession, 'token'> & { isCurrent: boolean })[];
   totalActive: number;
 }> {
-  await ensureGistSynced();
-  const rows = db.prepare(`
+  const rows = await dbQueryAll<any>(`
     SELECT id, token, user_id, device_name, ip_address, location, created_at, last_active_at, is_master
     FROM auth_sessions
     WHERE is_revoked = 0
     ORDER BY created_at ASC
-  `).all() as any[];
+  `);
 
   const formatted = rows.map((s) => ({
     id: s.id,
@@ -412,31 +411,25 @@ export async function getActiveSessions(currentSessionToken?: string): Promise<{
 }
 
 export async function revokeSessionById(sessionId: string, reason?: string): Promise<boolean> {
-  const res = db.prepare(`
-    UPDATE auth_sessions
-    SET is_revoked = 1, revoked_reason = ?
-    WHERE id = ?
-  `).run(reason || 'Session terminated by Declan Salo', sessionId);
+  const res = await dbExecute(
+    `UPDATE auth_sessions
+     SET is_revoked = 1, revoked_reason = ?
+     WHERE id = ?`,
+    [reason || 'Session terminated by Declan Salo', sessionId],
+  );
 
-  if (res.changes > 0) {
-    await pushToGist().catch(() => {});
-    return true;
-  }
-  return false;
+  return res.changes > 0;
 }
 
 export const revokeSession = revokeSessionById;
 
 export async function revokeAllOtherSessions(currentSessionToken: string, reason?: string): Promise<number> {
-  const res = db.prepare(`
-    UPDATE auth_sessions
-    SET is_revoked = 1, revoked_reason = ?
-    WHERE token != ? AND is_revoked = 0
-  `).run(reason || 'All guest sessions revoked by Declan Salo', currentSessionToken);
-
-  if (res.changes > 0) {
-    await pushToGist().catch(() => {});
-  }
+  const res = await dbExecute(
+    `UPDATE auth_sessions
+     SET is_revoked = 1, revoked_reason = ?
+     WHERE token != ? AND is_revoked = 0`,
+    [reason || 'All guest sessions revoked by Declan Salo', currentSessionToken],
+  );
 
   return res.changes;
 }

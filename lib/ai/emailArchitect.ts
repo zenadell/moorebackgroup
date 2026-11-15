@@ -1,5 +1,4 @@
-import db from '@/lib/db';
-import { ensureGistSynced, pushToGist, queueGistPush } from '@/lib/db/gistClient';
+import { dbExecute, dbQueryOne } from '@/lib/db';
 import {
   decryptSecret,
   encryptSecret,
@@ -35,11 +34,10 @@ interface StoredGeminiRow {
 }
 
 async function readGeminiRow(): Promise<StoredGeminiRow> {
-  await ensureGistSynced();
   try {
-    const row = db
-      .prepare("SELECT value FROM admin_settings WHERE key = 'gemini_ai' LIMIT 1")
-      .get() as { value?: string } | undefined;
+    const row = await dbQueryOne<{ value?: string }>(
+      "SELECT value FROM admin_settings WHERE key = 'gemini_ai' LIMIT 1",
+    );
     if (row?.value) {
       return JSON.parse(row.value) as StoredGeminiRow;
     }
@@ -47,18 +45,17 @@ async function readGeminiRow(): Promise<StoredGeminiRow> {
   return {};
 }
 
-function writeGeminiRow(payload: StoredGeminiRow): void {
-  db.prepare(
-    `INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)`
-  ).run('gemini_ai', JSON.stringify(payload), Date.now());
-  queueGistPush(600);
+async function writeGeminiRow(payload: StoredGeminiRow): Promise<void> {
+  await dbExecute(
+    `INSERT INTO admin_settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    ['gemini_ai', JSON.stringify(payload), Date.now()],
+  );
 }
 
 async function writeGeminiRowAndSync(payload: StoredGeminiRow): Promise<void> {
-  db.prepare(
-    `INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)`
-  ).run('gemini_ai', JSON.stringify(payload), Date.now());
-  await pushToGist().catch((err) => console.error('[GeminiAI] Immediate Gist sync error:', err));
+  await writeGeminiRow(payload);
 }
 
 function maskApiKey(key: string): string {
@@ -68,15 +65,15 @@ function maskApiKey(key: string): string {
   return `${trimmed.slice(0, 6)}••••••${trimmed.slice(-4)}`;
 }
 
-function resolveEffectiveGeminiKey(row: StoredGeminiRow): {
+async function resolveEffectiveGeminiKey(row: StoredGeminiRow): Promise<{
   apiKey: string;
   source: 'encrypted_db' | 'env' | 'none';
-} {
+}> {
   const dbKey = decryptSecret(row.apiKey);
   if (dbKey) {
     // Transparently upgrade any legacy plaintext SQLite value to AES-256-GCM at rest.
     if (row.apiKey && !isEncryptedSecret(row.apiKey)) {
-      writeGeminiRow({
+      await writeGeminiRow({
         ...row,
         apiKey: encryptSecret(dbKey),
         updatedAt: Date.now(),
@@ -164,7 +161,7 @@ export async function verifyGeminiApiKey(
 
 export async function getGeminiAdminConfigSummary(): Promise<GeminiAdminConfigSummary> {
   const row = await readGeminiRow();
-  const { apiKey, source } = resolveEffectiveGeminiKey(row);
+  const { apiKey, source } = await resolveEffectiveGeminiKey(row);
   const model = (row.model || DEFAULT_GEMINI_MODEL).trim() || DEFAULT_GEMINI_MODEL;
 
   const status: GeminiKeyHealthStatus = !apiKey
@@ -209,7 +206,7 @@ export async function saveGeminiAdminConfig(input: {
     }
   }
 
-  const resolvedExisting = resolveEffectiveGeminiKey(existing);
+  const resolvedExisting = await resolveEffectiveGeminiKey(existing);
   const nextPlainKey = suppliedKey || resolvedExisting.apiKey;
   const nextStatus: GeminiKeyHealthStatus = suppliedKey
     ? 'active'
@@ -343,7 +340,7 @@ export async function planAndDraftEmailWithGemini(params: {
   };
 }): Promise<AiPlanResult> {
   const row = await readGeminiRow();
-  const { apiKey } = resolveEffectiveGeminiKey(row);
+  const { apiKey } = await resolveEffectiveGeminiKey(row);
   const model = (row.model || DEFAULT_GEMINI_MODEL).trim() || DEFAULT_GEMINI_MODEL;
 
   if (!apiKey) {

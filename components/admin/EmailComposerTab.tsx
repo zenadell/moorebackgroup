@@ -805,7 +805,7 @@ export function EmailComposerTab({
                 </strong>
               </div>
               <p style={{ fontSize: '12px', color: '#4b5563', margin: '3px 0 0' }}>
-                AES-256-GCM encrypted &amp; stored in the database (SQLite &amp; GitHub Gist) —{' '}
+                AES-256-GCM encrypted &amp; stored in the cloud PostgreSQL database —{' '}
                 <strong>synced automatically across localhost and cloud</strong>.
               </p>
             </div>

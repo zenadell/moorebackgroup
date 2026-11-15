@@ -509,7 +509,7 @@ export default function SaloAdminPortal() {
       if (data.success) {
         setAddressStatus({
           type: 'success',
-          message: 'Vault deposit addresses updated across SQLite & GitHub Gist.',
+          message: 'Vault deposit addresses updated and persisted in the database.',
         });
       } else {
         setAddressStatus({ type: 'error', message: data.error || 'Failed to update addresses.' });
@@ -771,7 +771,7 @@ export default function SaloAdminPortal() {
         setTwoFactorStatusMsg({
           type: 'success',
           message: resendApiKeyInput.trim()
-            ? 'Verified Resend API key live & saved encrypted into database (SQLite & GitHub Gist).'
+            ? 'Verified Resend API key live & saved encrypted into PostgreSQL database.'
             : 'Official MooreBach Group mail & 2FA settings saved & encrypted in database.',
         });
         loadEmailStudio(masterKey);

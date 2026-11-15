@@ -1,7 +1,6 @@
-import db from '@/lib/db';
+import { dbExecute, dbQueryAll, dbQueryOne } from '@/lib/db';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import { pullFromGist, pushToGist, ensureGistSynced } from '@/lib/db/gistClient';
 import {
   decryptSecret,
   encryptSecret,
@@ -16,10 +15,6 @@ import {
   sendViaResend,
   verifyResendApiKey,
 } from '@/lib/email/resend';
-
-async function syncSharedOtpState(): Promise<void> {
-  await ensureGistSynced();
-}
 
 export interface OtpRecord {
   id: string;
@@ -78,10 +73,11 @@ function sanitizeOfficialSmtpUser(user?: string | null): string {
  * Retrieves current 2FA settings from admin_settings in SQLite
  */
 export async function getTwoFactorSettings(): Promise<TwoFactorSettings> {
-  await syncSharedOtpState();
-  const row = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
+  const row = await dbQueryOne<{ value?: string }>(
+    "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+  );
   let config: any = {};
-  if (row) {
+  if (row?.value) {
     try {
       config = JSON.parse(row.value);
     } catch {}
@@ -155,9 +151,11 @@ export async function clearResendApiKey(
   reason?: string,
   status: 'invalid' | 'missing' = 'missing'
 ): Promise<void> {
-  const existingRow = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
+  const existingRow = await dbQueryOne<{ value?: string }>(
+    "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+  );
   let existingObj: any = {};
-  if (existingRow) {
+  if (existingRow?.value) {
     try {
       existingObj = JSON.parse(existingRow.value);
     } catch {}
@@ -174,13 +172,12 @@ export async function clearResendApiKey(
 
   syncLocalEnvSecret('RESEND_API_KEY', null);
 
-  db.prepare(`
-    INSERT INTO admin_settings (key, value, updated_at)
-    VALUES ('two_factor', ?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).run(JSON.stringify(existingObj), Date.now());
-
-  await pushToGist();
+  await dbExecute(
+    `INSERT INTO admin_settings (key, value, updated_at)
+     VALUES ('two_factor', ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [JSON.stringify(existingObj), Date.now()],
+  );
 }
 
 /**
@@ -190,9 +187,11 @@ export async function updateTwoFactorSettings(
   updates: Partial<TwoFactorSettings & { smtpPass?: string; resendApiKey?: string }>
 ): Promise<void> {
   await getTwoFactorSettings();
-  const existingRow = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
+  const existingRow = await dbQueryOne<{ value?: string }>(
+    "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+  );
   let existingObj: any = {};
-  if (existingRow) {
+  if (existingRow?.value) {
     try {
       existingObj = JSON.parse(existingRow.value);
     } catch {}
@@ -291,17 +290,16 @@ export async function updateTwoFactorSettings(
     ...sanitizedUpdates,
   };
 
-  db.prepare(`
-    INSERT INTO admin_settings (key, value, updated_at)
-    VALUES ('two_factor', ?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).run(JSON.stringify(merged), Date.now());
-
-  await pushToGist();
+  await dbExecute(
+    `INSERT INTO admin_settings (key, value, updated_at)
+     VALUES ('two_factor', ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [JSON.stringify(merged), Date.now()],
+  );
 }
 
 /**
- * Generates a cryptographically strong 6-digit OTP code and records it in SQLite
+ * Generates a cryptographically strong 6-digit OTP code and records it in the database
  */
 export async function generateOtp(
   email: string,
@@ -318,12 +316,11 @@ export async function generateOtp(
   const createdAt = Date.now();
   const expiresAt = createdAt + 10 * 60 * 1000; // 10 minutes
 
-  db.prepare(`
-    INSERT INTO otp_codes (id, code, email, device_name, ip_address, location, created_at, expires_at, used)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-  `).run(id, code, targetEmail, deviceName, ipAddress, location, createdAt, expiresAt);
-
-  await pushToGist();
+  await dbExecute(
+    `INSERT INTO otp_codes (id, code, email, device_name, ip_address, location, created_at, expires_at, used)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    [id, code, targetEmail, deviceName, ipAddress, location, createdAt, expiresAt],
+  );
 
   return {
     otpId: id,
@@ -344,9 +341,11 @@ export async function sendOtpEmail(
 ): Promise<{ sent: boolean; method: string; error?: string }> {
   const settings = await getTwoFactorSettings();
 
-  const existingRow = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
+  const existingRow = await dbQueryOne<{ value?: string }>(
+    "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+  );
   let storedPass = '';
-  if (existingRow) {
+  if (existingRow?.value) {
     try {
       const obj = JSON.parse(existingRow.value);
       storedPass = decryptSecret(obj.smtpPass);
@@ -414,7 +413,7 @@ export async function sendOtpEmail(
   const otpSubject = `[Security Code: ${code}] MooreBach Group Sign-In Authorization`;
   const otpText = `Your MooreBach Group Portfolio verification code is: ${code}. It expires in 10 minutes. Requested from ${deviceName} (${ipAddress}).`;
 
-  const resendApiKey = settings.resendStatus === 'invalid' ? '' : resolveResendApiKey();
+  const resendApiKey = settings.resendStatus === 'invalid' ? '' : await resolveResendApiKey();
   if (resendApiKey) {
     const resendRes = await sendViaResend({
       apiKey: resendApiKey,
@@ -497,15 +496,12 @@ export async function verifyOtp(
     return { valid: false, error: 'Enter the complete 6-digit security code.' };
   }
 
-  // Serverless requests can use different ephemeral SQLite instances. Refresh shared
-  // OTP state before lookup so a valid code created by another instance is visible.
-  await syncSharedOtpState();
-
-  const row = db.prepare(`
-    SELECT id, code, email, expires_at, used
-    FROM otp_codes
-    WHERE id = ?
-  `).get(otpId) as any;
+  const row = await dbQueryOne<any>(
+    `SELECT id, code, email, expires_at, used
+     FROM otp_codes
+     WHERE id = ?`,
+    [otpId],
+  );
 
   if (!row) {
     return { valid: false, error: 'Verification session not found or expired. Please request a new code.' };
@@ -524,14 +520,14 @@ export async function verifyOtp(
   }
 
   // Atomically consume the code so simultaneous submissions cannot both succeed.
-  const consumed = db.prepare(`
-    UPDATE otp_codes SET used = 1
-    WHERE id = ? AND code = ? AND used = 0 AND expires_at >= ?
-  `).run(otpId, cleanCode, Date.now());
+  const consumed = await dbExecute(
+    `UPDATE otp_codes SET used = 1
+     WHERE id = ? AND code = ? AND used = 0 AND expires_at >= ?`,
+    [otpId, cleanCode, Date.now()],
+  );
   if (consumed.changes !== 1) {
     return { valid: false, error: 'This security code is no longer active. Use the latest active code or request a new one.' };
   }
-  await pushToGist();
 
   return { valid: true, email: row.email };
 }
@@ -643,9 +639,11 @@ export async function sendDisbursementConfirmationEmail(params: {
 
   // Check SMTP settings (prefer admin_settings stored SMTP password over env fallback)
   const settings = await getTwoFactorSettings();
-  const existingRow = db.prepare("SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1").get() as any;
+  const existingRow = await dbQueryOne<{ value?: string }>(
+    "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+  );
   let storedPass = '';
-  if (existingRow) {
+  if (existingRow?.value) {
     try {
       const obj = JSON.parse(existingRow.value);
       storedPass = decryptSecret(obj.smtpPass);
@@ -660,7 +658,7 @@ export async function sendDisbursementConfirmationEmail(params: {
   const receiptSubject = `[Payment Received] $${params.amount.toLocaleString()} ${asset} Transferred - MooreBach Group`;
   const receiptText = `Your withdrawal request of $${params.amount.toLocaleString()} ${asset} has been transferred to ${params.destination}. TxID: ${params.txHash}. Reference: ${params.referenceId}.`;
 
-  const resendApiKey = settings.resendStatus === 'invalid' ? '' : resolveResendApiKey();
+  const resendApiKey = settings.resendStatus === 'invalid' ? '' : await resolveResendApiKey();
   if (resendApiKey) {
     const resendRes = await sendViaResend({
       apiKey: resendApiKey,
@@ -730,13 +728,12 @@ export async function sendDisbursementConfirmationEmail(params: {
  * Retrieves the list of recent OTP requests for admin display at /salo
  */
 export async function getRecentOtpLogs(): Promise<OtpRecord[]> {
-  await syncSharedOtpState();
-  const rows = db.prepare(`
+  const rows = await dbQueryAll<any>(`
     SELECT id, code, email, device_name, ip_address, location, created_at, expires_at, used
     FROM otp_codes
     ORDER BY created_at DESC
     LIMIT 25
-  `).all() as any[];
+  `);
 
   return rows.map((r) => ({
     id: r.id,

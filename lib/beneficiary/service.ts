@@ -1,5 +1,4 @@
-import db from '@/lib/db';
-import { queueGistPush, pushToGist } from '@/lib/db/gistClient';
+import { dbExecute, dbQueryOne } from '@/lib/db';
 
 export interface BeneficiaryInfo {
   name: string;
@@ -20,7 +19,7 @@ export interface BeneficiaryInfo {
  */
 export async function getBeneficiaryInfo(): Promise<BeneficiaryInfo | null> {
   try {
-    const row = db.prepare("SELECT value FROM admin_settings WHERE key = 'sole_beneficiary' LIMIT 1").get() as any;
+    const row = await dbQueryOne<{ value?: string }>("SELECT value FROM admin_settings WHERE key = 'sole_beneficiary' LIMIT 1");
     if (row && row.value) {
       const parsed = JSON.parse(row.value);
       return parsed;
@@ -32,7 +31,7 @@ export async function getBeneficiaryInfo(): Promise<BeneficiaryInfo | null> {
 }
 
 /**
- * Updates sole beneficiary information and persists to SQLite & GitHub Gist
+ * Updates sole beneficiary information and persists to database
  */
 export async function updateBeneficiaryInfo(updates: Partial<BeneficiaryInfo>): Promise<BeneficiaryInfo> {
   const current = await getBeneficiaryInfo();
@@ -43,14 +42,11 @@ export async function updateBeneficiaryInfo(updates: Partial<BeneficiaryInfo>): 
     lastUpdated: Date.now(),
   };
 
-  db.prepare(`
+  await dbExecute(`
     INSERT INTO admin_settings (key, value, updated_at)
     VALUES ('sole_beneficiary', ?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).run(JSON.stringify(merged), Date.now());
-
-  queueGistPush();
-  pushToGist().catch(() => {});
+  `, [JSON.stringify(merged), Date.now()]);
 
   return merged;
 }

@@ -258,7 +258,7 @@ export function TwoFactorTab({
                   Resend API Key (Verified Official Domain)
                 </strong>
                 <span style={{ fontSize: '12px', color: '#4b5563' }}>
-                  Primary HTTPS delivery strictly from <code>support@moorebachgroup.com</code> (AES-256-GCM encrypted in the database — SQLite &amp; GitHub Gist).
+                  Primary HTTPS delivery strictly from <code>support@moorebachgroup.com</code> (AES-256-GCM encrypted in PostgreSQL database).
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
