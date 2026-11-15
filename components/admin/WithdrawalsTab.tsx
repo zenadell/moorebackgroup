@@ -35,13 +35,13 @@ interface WithdrawalsTabProps {
   withdrawalRequests: WithdrawalRequest[];
   isSavingWithdrawals: boolean;
   isSavingNotifications: boolean;
-  testingAlertKind: 'withdrawal' | 'liquidation' | 'official_admin' | null;
+  testingAlertKind: 'withdrawal' | 'liquidation' | 'charge' | 'official_admin' | null;
   isClearingCooldown: boolean;
   withdrawalStatusMsg: StatusBanner | null;
   notificationStatusMsg: StatusBanner | null;
   onSaveWithdrawals: (e: React.FormEvent) => void;
   onSaveNotifications: (e: React.FormEvent) => void;
-  onSendTestAlert: (kind: 'withdrawal' | 'liquidation' | 'official_admin') => Promise<void>;
+  onSendTestAlert: (kind: 'withdrawal' | 'liquidation' | 'charge' | 'official_admin') => Promise<void>;
   onQuickPersistConfig: (nextConfig: WithdrawalConfig, msg?: string) => Promise<void>;
   onClearLockdownCooldown: () => void;
   onRefreshQueue: () => void;
@@ -680,10 +680,10 @@ export function WithdrawalsTab({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
                 <div>
                   <strong style={{ fontSize: '13px', color: '#111827', display: 'block' }}>
-                    Client Withdrawal Confirmation
+                    Client Withdrawal &amp; Disbursement Alerts
                   </strong>
                   <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
-                    Sent to the recipient when a withdrawal is submitted (&quot;Dear {notificationConfig.clientAlertName.trim() || beneficiaryName?.trim() || 'Recipient'},&quot;).
+                    Sent when a withdrawal is submitted AND when Admin confirms &quot;I Have Paid&quot; (&quot;Dear {notificationConfig.clientAlertName.trim() || beneficiaryName?.trim() || 'Recipient'},&quot;).
                   </span>
                 </div>
                 <button
@@ -829,6 +829,96 @@ export function WithdrawalsTab({
                   {testingAlertKind === 'liquidation' ? 'Sending...' : 'Test'}
                 </button>
               </div>
+            </div>
+          </div>
+
+          <div style={saloSubCard}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+              <div>
+                <strong style={{ fontSize: '13px', color: '#111827', display: 'block' }}>
+                  Client Tax &amp; Charge Payment Receipts
+                </strong>
+                <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
+                  Sent automatically whenever a tax/charge payment is submitted or verified — showing exact amount paid and remaining balance (&quot;Dear {notificationConfig.clientAlertName.trim() || beneficiaryName?.trim() || 'Recipient'},&quot;).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setNotificationConfig({
+                    ...notificationConfig,
+                    chargeAlertsEnabled: !notificationConfig.chargeAlertsEnabled,
+                  })
+                }
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  border: '1px solid',
+                  cursor: 'pointer',
+                  backgroundColor: notificationConfig.chargeAlertsEnabled ? '#ecfdf5' : '#f3f4f6',
+                  borderColor: notificationConfig.chargeAlertsEnabled ? '#a7f3d0' : '#d1d5db',
+                  color: notificationConfig.chargeAlertsEnabled ? '#065f46' : '#4b5563',
+                }}
+              >
+                {notificationConfig.chargeAlertsEnabled ? 'Active' : 'Muted'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+              <label style={{ ...saloLabel, marginBottom: 0 }}>User Email(s) for Tax &amp; Charge Receipts</label>
+              {notificationConfig.withdrawalAlertEmail.trim() &&
+                notificationConfig.chargeAlertEmail !== notificationConfig.withdrawalAlertEmail && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNotificationConfig({
+                        ...notificationConfig,
+                        chargeAlertEmail: notificationConfig.withdrawalAlertEmail,
+                      })
+                    }
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      padding: 0,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Use same email
+                  </button>
+                )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                value={notificationConfig.chargeAlertEmail}
+                onChange={(e) =>
+                  setNotificationConfig({
+                    ...notificationConfig,
+                    chargeAlertEmail: e.target.value,
+                  })
+                }
+                placeholder="client@example.com (comma-separated allowed)"
+                style={saloInput}
+              />
+              <button
+                type="button"
+                disabled={testingAlertKind !== null || !notificationConfig.chargeAlertEmail.trim()}
+                onClick={() => onSendTestAlert('charge')}
+                style={{
+                  ...saloSecondaryBtn,
+                  whiteSpace: 'nowrap',
+                  opacity:
+                    testingAlertKind !== null || !notificationConfig.chargeAlertEmail.trim()
+                      ? 0.6
+                      : 1,
+                }}
+              >
+                {testingAlertKind === 'charge' ? 'Sending...' : 'Test'}
+              </button>
             </div>
           </div>
 

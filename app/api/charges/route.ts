@@ -3,6 +3,7 @@ import {
   getAccruedChargesSummary,
   submitChargePaymentClaim,
 } from '@/lib/charges/service';
+import { sendAdminChargePaymentSubmittedEmail } from '@/lib/email/service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -49,6 +50,14 @@ export async function POST(req: NextRequest) {
       txHash,
       userNote,
     });
+
+    if (!result.deduplicated) {
+      try {
+        await sendAdminChargePaymentSubmittedEmail(result.payment, result.summary);
+      } catch (emailErr) {
+        console.error('[CHARGES_SUBMIT_EMAIL] Notification error:', emailErr);
+      }
+    }
 
     return NextResponse.json(
       {

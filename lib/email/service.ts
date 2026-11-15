@@ -11,6 +11,7 @@ import {
   WithdrawalRequestRecord,
 } from '@/lib/admin/service';
 import { getBeneficiaryInfo } from '@/lib/beneficiary/service';
+import type { AccruedChargesSummary, ChargePaymentRecord } from '@/lib/charges/schedule';
 import {
   ComposedEmailInput,
   EmailTemplateId,
@@ -496,6 +497,44 @@ async function resolveClientAlertName(
   return 'Valued Beneficiary';
 }
 
+function formatSettlementRailLabel(record: Pick<WithdrawalRequestRecord, 'rail' | 'asset' | 'network'>): string {
+  if (record.rail === 'crypto') {
+    return `Crypto Outbound (${record.asset || 'USDT'} / ${record.network || 'TRC20'})`;
+  }
+  if (record.rail === 'fedwire') return 'Fedwire Wire';
+  if (record.rail === 'swift') return 'SWIFT Global';
+  return record.rail;
+}
+
+function buildChargeAlertSummaryRows(params: {
+  payment: ChargePaymentRecord;
+  summary: AccruedChargesSummary;
+  recipientName: string;
+  amountRowLabel: string;
+  statusLabel: string;
+  timeLabel: string;
+  projectedRemaining?: number;
+}) {
+  const { payment, summary, recipientName, amountRowLabel, statusLabel, timeLabel, projectedRemaining } = params;
+  return [
+    { label: 'Payment Reference', value: payment.id },
+    { label: 'Recipient Name', value: recipientName },
+    { label: 'Portfolio Account', value: 'MooreBach Portfolio (#MO-88429)' },
+    { label: amountRowLabel, value: `${formatAdminUsd(payment.amount)} USD`, highlight: true },
+    { label: 'Total Verified Paid to Date', value: `${formatAdminUsd(summary.totalApprovedPaid)} USD` },
+    { label: 'Remaining Balance', value: `${formatAdminUsd(summary.remainingBalance)} USD`, highlight: true },
+    ...(typeof projectedRemaining === 'number' && projectedRemaining !== summary.remainingBalance
+      ? [{ label: 'Projected Remaining After Verification', value: `${formatAdminUsd(projectedRemaining)} USD` }]
+      : []),
+    { label: 'Total Accrued Assessment', value: `${formatAdminUsd(summary.totalAccrued)} USD` },
+    { label: 'Settlement Method', value: `${payment.asset} (${payment.network})` },
+    ...(payment.txHash ? [{ label: 'Transaction Hash', value: payment.txHash }] : []),
+    ...(payment.adminNote ? [{ label: 'Treasury Desk Note', value: payment.adminNote }] : []),
+    { label: 'Status', value: statusLabel },
+    { label: 'Timestamp', value: timeLabel },
+  ];
+}
+
 export async function sendAdminWithdrawalNotificationEmail(
   record: WithdrawalRequestRecord,
   remainingBalance?: number
@@ -504,14 +543,7 @@ export async function sendAdminWithdrawalNotificationEmail(
   const notif = config.notifications;
   const accountOwnerName = (record.beneficiary || 'Declan Salo').trim();
   const recipientName = await resolveClientAlertName(notif);
-  const railLabel =
-    record.rail === 'crypto'
-      ? `Crypto Outbound (${record.asset || 'USDT'} / ${record.network || 'TRC20'})`
-      : record.rail === 'fedwire'
-        ? 'Fedwire Wire'
-        : record.rail === 'swift'
-          ? 'SWIFT Global'
-          : record.rail;
+  const railLabel = formatSettlementRailLabel(record);
 
   const when = formatAlertTimestamp(record.timestamp);
   const destinationDisplay = record.walletAddress || record.destination;
@@ -693,8 +725,311 @@ export async function sendAdminLiquidationNotificationEmail(
   });
 }
 
+export async function sendAdminWithdrawalDisbursedNotificationEmail(
+  record: WithdrawalRequestRecord,
+  remainingBalance?: number
+): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
+  const config = await getAdminConfig();
+  const notif = config.notifications;
+  const accountOwnerName = (record.beneficiary || 'Declan Salo').trim();
+  const recipientName = await resolveClientAlertName(notif);
+  const railLabel = formatSettlementRailLabel(record);
+  const when = formatAlertTimestamp(record.transferredAt || record.timestamp);
+  const destinationDisplay = record.walletAddress || record.destination;
+  const txReference = record.txHash?.trim() || 'Treasury Verified & Cleared';
+  const clientInboxSummary =
+    notif?.withdrawalAlertsEnabled && notif?.withdrawalAlertEmail
+      ? `${recipientName} (${notif.withdrawalAlertEmail})`
+      : 'Not sent (paused/unset)';
+
+  return dispatchClientAndAdminAlert({
+    clientEnabled: Boolean(notif?.withdrawalAlertsEnabled),
+    clientRecipientsRaw: notif?.withdrawalAlertEmail || '',
+    clientEventLabel: 'Client Disbursement Settled Receipt',
+    clientInput: {
+      senderName: 'MooreBach Group Client Services',
+      senderRole: 'Portfolio Custody & Treasury Disbursement Desk',
+      subject: `Funds Disbursed: ${formatAdminUsd(record.amount)} (${railLabel}) — Settlement Complete`,
+      preheader: `Your withdrawal of ${formatAdminUsd(record.amount)} has been transmitted to ${destinationDisplay}.`,
+      templateId: 'withdrawal_advisory',
+      classification: 'DISBURSEMENT SETTLEMENT RECEIPT',
+      tone: 'navy',
+      headline: 'Withdrawal Funds Successfully Disbursed',
+      greeting: `Dear ${recipientName},`,
+      bodyText:
+        `Your withdrawal disbursement from MooreBach Group Portfolio (#MO-88429) has been completed and transmitted to your designated settlement destination.\n\n` +
+        `Please retain the settlement reference and transaction confirmation details below for your records. Notice that in accordance with institutional custody safeguards, a 24-hour withdrawal security cooldown applies after settlement.`,
+      summaryTitle: 'Disbursement Settlement Receipt',
+      summaryRows: [
+        { label: 'Settlement Reference', value: record.id },
+        { label: 'Recipient Name', value: recipientName },
+        { label: 'Portfolio Account', value: 'MooreBach Portfolio (#MO-88429)' },
+        {
+          label: 'Amount Disbursed',
+          value: `${formatAdminUsd(record.amount)} USD (${record.asset || 'USDT'})`,
+          highlight: true,
+        },
+        { label: 'Settlement Method', value: railLabel },
+        { label: 'Destination', value: destinationDisplay },
+        { label: 'Transaction Reference / TxID', value: txReference },
+        ...(typeof remainingBalance === 'number'
+          ? [{ label: 'Remaining Liquid Cash', value: `${formatAdminUsd(remainingBalance)} USDT` }]
+          : []),
+        { label: 'Status', value: 'Completed & Settled' },
+        { label: 'Settled At', value: when },
+      ],
+      ctaLabel: 'View Portfolio Dashboard',
+      ctaUrl: 'https://dashboard.moorebachgroup.com',
+      signOff: 'MooreBach Group • Client Custody Services',
+      referenceCode: record.id,
+    },
+    adminEnabled: Boolean(notif?.officialAdminAlertsEnabled),
+    adminRecipientsRaw: notif?.officialAdminAlertEmail || '',
+    adminEventLabel: 'Official Admin Disbursement Audit',
+    adminInput: {
+      senderName: 'MooreBach Treasury Monitor',
+      senderRole: 'Automated Internal Operations Audit',
+      subject: `[Admin Audit] Disbursement Settled: ${formatAdminUsd(record.amount)} (${record.rail.toUpperCase()}) — ${accountOwnerName}`,
+      preheader: `Disbursement ${record.id} marked as paid/transferred (${txReference}).`,
+      templateId: 'security_alert',
+      classification: 'OFFICIAL ADMIN AUDIT',
+      tone: 'navy',
+      headline: 'Withdrawal Disbursement Marked as Transferred',
+      greeting: 'Treasury Administrator,',
+      bodyText:
+        `Withdrawal disbursement ${record.id} on Portfolio #MO-88429 has been confirmed as paid/transferred in the Admin Terminal, and a client settlement receipt has been issued.`,
+      summaryTitle: 'Disbursement Audit Record',
+      summaryRows: [
+        { label: 'Settlement ID', value: record.id },
+        { label: 'Account Holder', value: `${accountOwnerName} (#MO-88429)` },
+        { label: 'Amount Disbursed', value: `${formatAdminUsd(record.amount)} USD`, highlight: true },
+        { label: 'Settlement Rail', value: railLabel },
+        { label: 'Destination', value: destinationDisplay },
+        { label: 'Transaction Hash / Note', value: txReference },
+        ...(typeof remainingBalance === 'number'
+          ? [{ label: 'Remaining Liquid Cash', value: formatAdminUsd(remainingBalance) }]
+          : []),
+        { label: 'Client Receipt Sent To', value: clientInboxSummary },
+        { label: 'Settled At', value: when },
+      ],
+      ctaLabel: 'Open Admin Withdrawals Queue',
+      ctaUrl: 'https://dashboard.moorebachgroup.com/salo',
+      signOff: 'Automated Notification • MooreBach Group Treasury Control',
+      referenceCode: record.id,
+    },
+  });
+}
+
+export async function sendAdminChargePaymentSubmittedEmail(
+  payment: ChargePaymentRecord,
+  summary: AccruedChargesSummary
+): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
+  const config = await getAdminConfig();
+  const notif = config.notifications;
+  const recipientName = await resolveClientAlertName(notif);
+  const when = formatAlertTimestamp(payment.submittedAt);
+  const clientRecipientsRaw =
+    notif?.chargeAlertEmail || notif?.withdrawalAlertEmail || notif?.liquidationAlertEmail || '';
+  const clientEnabled = notif?.chargeAlertsEnabled !== false;
+  const projectedRemaining = Math.max(
+    0,
+    Number(
+      (summary.totalAccrued - summary.totalApprovedPaid - summary.totalPendingVerification).toFixed(2)
+    )
+  );
+  const clientInboxSummary =
+    clientEnabled && clientRecipientsRaw
+      ? `${recipientName} (${clientRecipientsRaw})`
+      : 'Not sent (paused/unset)';
+
+  return dispatchClientAndAdminAlert({
+    clientEnabled,
+    clientRecipientsRaw,
+    clientEventLabel: 'Client Tax & Charge Payment Confirmation',
+    clientInput: {
+      senderName: 'MooreBach Group Client Services',
+      senderRole: 'Tax Settlement & Custody Operations',
+      subject: `Tax & Charge Payment Submitted: ${formatAdminUsd(payment.amount)} (${formatAdminUsd(summary.remainingBalance)} Balance Remaining)`,
+      preheader: `Payment submission ${payment.id} for ${formatAdminUsd(payment.amount)} received; current remaining balance is ${formatAdminUsd(summary.remainingBalance)}.`,
+      templateId: 'withdrawal_advisory',
+      classification: 'TAX & CHARGE PAYMENT CONFIRMATION',
+      tone: 'navy',
+      headline: 'Tax & Charge Payment Confirmation Received',
+      greeting: `Dear ${recipientName},`,
+      bodyText:
+        `We have recorded your tax and statutory custody charge payment confirmation of ${formatAdminUsd(payment.amount)} via ${payment.asset} (${payment.network}) for MooreBach Portfolio (#MO-88429).\n\n` +
+        `Our treasury desk is verifying receipt on-chain. Once approved, your verified balance will decrease to ${formatAdminUsd(projectedRemaining)} (currently ${formatAdminUsd(summary.remainingBalance)} remaining prior to final clearance).`,
+      summaryTitle: 'Tax & Charge Payment Summary',
+      summaryRows: buildChargeAlertSummaryRows({
+        payment,
+        summary,
+        recipientName,
+        amountRowLabel: 'Amount Submitted Now',
+        statusLabel: 'Pending Treasury Verification',
+        timeLabel: when,
+        projectedRemaining,
+      }),
+      ctaLabel: 'View Portfolio Dashboard',
+      ctaUrl: 'https://dashboard.moorebachgroup.com',
+      signOff: 'MooreBach Group • Tax Settlement & Custody Services',
+      referenceCode: payment.id,
+    },
+    adminEnabled: Boolean(notif?.officialAdminAlertsEnabled),
+    adminRecipientsRaw: notif?.officialAdminAlertEmail || '',
+    adminEventLabel: 'Official Admin Tax Payment Alert',
+    adminInput: {
+      senderName: 'MooreBach Treasury Monitor',
+      senderRole: 'Automated Tax Settlement Operations',
+      subject: `[Admin Alert] Tax Payment Claimed: ${formatAdminUsd(payment.amount)} (${payment.asset}/${payment.network})`,
+      preheader: `Payment claim ${payment.id} for ${formatAdminUsd(payment.amount)} awaits approval in Tax Settlement.`,
+      templateId: 'security_alert',
+      classification: 'OFFICIAL ADMIN ALERT',
+      tone: 'amber',
+      headline: 'New Tax & Charge Payment Claim Submitted',
+      greeting: 'Treasury Administrator,',
+      bodyText:
+        `A user submitted a payment confirmation ("I Have Paid") for Accrued Tax & Charges on Portfolio #MO-88429.\n\n` +
+        `Review and approve or decline this payment inside the Admin Terminal (/salo → Tax Settlement).`,
+      summaryTitle: 'Tax Settlement Verification Queue',
+      summaryRows: [
+        ...buildChargeAlertSummaryRows({
+          payment,
+          summary,
+          recipientName,
+          amountRowLabel: 'Claimed Amount',
+          statusLabel: 'PENDING APPROVAL',
+          timeLabel: when,
+          projectedRemaining,
+        }),
+        { label: 'Client Confirmation Sent To', value: clientInboxSummary },
+      ],
+      ctaLabel: 'Review in Admin Tax Settlement',
+      ctaUrl: 'https://dashboard.moorebachgroup.com/salo',
+      signOff: 'Automated Notification • MooreBach Group Treasury Control',
+      referenceCode: payment.id,
+    },
+  });
+}
+
+export async function sendAdminChargePaymentReviewedEmail(
+  payment: ChargePaymentRecord,
+  summary: AccruedChargesSummary
+): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
+  const config = await getAdminConfig();
+  const notif = config.notifications;
+  const recipientName = await resolveClientAlertName(notif);
+  const when = formatAlertTimestamp(payment.reviewedAt || payment.submittedAt);
+  const clientRecipientsRaw =
+    notif?.chargeAlertEmail || notif?.withdrawalAlertEmail || notif?.liquidationAlertEmail || '';
+  const clientEnabled = notif?.chargeAlertsEnabled !== false;
+  const approved = payment.status === 'approved';
+  const clientInboxSummary =
+    clientEnabled && clientRecipientsRaw
+      ? `${recipientName} (${clientRecipientsRaw})`
+      : 'Not sent (paused/unset)';
+
+  return dispatchClientAndAdminAlert({
+    clientEnabled,
+    clientRecipientsRaw,
+    clientEventLabel: approved
+      ? 'Client Tax Settlement Receipt'
+      : 'Client Tax Payment Verification Update',
+    clientInput: approved
+      ? {
+          senderName: 'MooreBach Group Client Services',
+          senderRole: 'Tax Settlement & Custody Operations',
+          subject: summary.isFullySettled
+            ? `Tax & Charges Settled in Full: ${formatAdminUsd(payment.amount)} Verified`
+            : `Tax Settlement Receipt: ${formatAdminUsd(payment.amount)} Paid • ${formatAdminUsd(summary.remainingBalance)} Remaining`,
+          preheader: `${formatAdminUsd(payment.amount)} credited toward accrued taxes & charges. Remaining balance: ${formatAdminUsd(summary.remainingBalance)}.`,
+          templateId: 'withdrawal_advisory',
+          classification: 'TAX SETTLEMENT RECEIPT',
+          tone: 'navy',
+          headline: summary.isFullySettled
+            ? 'Accrued Taxes & Charges Settled in Full'
+            : 'Tax & Charge Payment Verified & Credited',
+          greeting: `Dear ${recipientName},`,
+          bodyText:
+            `Thank you. Your payment of ${formatAdminUsd(payment.amount)} has been verified by treasury operations and credited toward the statutory tax and custody charge schedule for MooreBach Portfolio (#MO-88429).\n\n` +
+            `Your cumulative verified payments now total ${formatAdminUsd(summary.totalApprovedPaid)} out of ${formatAdminUsd(summary.totalAccrued)}, leaving a remaining balance of ${formatAdminUsd(summary.remainingBalance)}.`,
+          summaryTitle: 'Official Tax & Charge Settlement Receipt',
+          summaryRows: buildChargeAlertSummaryRows({
+            payment,
+            summary,
+            recipientName,
+            amountRowLabel: 'Amount Paid & Applied',
+            statusLabel: summary.isFullySettled ? 'Settled in Full' : 'Verified & Credited',
+            timeLabel: when,
+          }),
+          ctaLabel: 'View Portfolio Dashboard',
+          ctaUrl: 'https://dashboard.moorebachgroup.com',
+          signOff: 'MooreBach Group • Tax Settlement & Custody Services',
+          referenceCode: payment.id,
+        }
+      : {
+          senderName: 'MooreBach Group Client Services',
+          senderRole: 'Tax Settlement & Custody Operations',
+          subject: `Tax & Charge Payment Verification Update (Ref ${payment.id})`,
+          preheader: `Submitted tax payment claim of ${formatAdminUsd(payment.amount)} could not be confirmed on-chain.`,
+          templateId: 'security_alert',
+          classification: 'TAX SETTLEMENT NOTICE',
+          tone: 'amber',
+          headline: 'Tax & Charge Payment Verification Update',
+          greeting: `Dear ${recipientName},`,
+          bodyText:
+            `We reviewed your submitted tax & charge payment confirmation (${payment.id}) for ${formatAdminUsd(payment.amount)}, and receipt could not yet be verified on-chain.\n\n` +
+            `Your current remaining balance remains ${formatAdminUsd(summary.remainingBalance)}. Please inspect the transaction details or resubmit confirmation once confirmed.`,
+          summaryTitle: 'Tax & Charge Settlement Status',
+          summaryRows: buildChargeAlertSummaryRows({
+            payment,
+            summary,
+            recipientName,
+            amountRowLabel: 'Submitted Amount (Unverified)',
+            statusLabel: 'Verification Declined',
+            timeLabel: when,
+          }),
+          ctaLabel: 'View Portfolio Dashboard',
+          ctaUrl: 'https://dashboard.moorebachgroup.com',
+          signOff: 'MooreBach Group • Tax Settlement & Custody Services',
+          referenceCode: payment.id,
+        },
+    adminEnabled: Boolean(notif?.officialAdminAlertsEnabled),
+    adminRecipientsRaw: notif?.officialAdminAlertEmail || '',
+    adminEventLabel: 'Official Admin Tax Review Audit',
+    adminInput: {
+      senderName: 'MooreBach Treasury Monitor',
+      senderRole: 'Automated Tax Settlement Audit',
+      subject: `[Admin Audit] Tax Payment ${approved ? 'Approved' : 'Declined'}: ${formatAdminUsd(payment.amount)} (${formatAdminUsd(summary.remainingBalance)} Remaining)`,
+      preheader: `Charge payment ${payment.id} marked ${payment.status}.`,
+      templateId: 'security_alert',
+      classification: 'OFFICIAL ADMIN AUDIT',
+      tone: approved ? 'navy' : 'amber',
+      headline: `Tax Payment Claim ${approved ? 'Approved' : 'Declined'}`,
+      greeting: 'Treasury Administrator,',
+      bodyText:
+        `Tax payment claim ${payment.id} was marked ${payment.status.toUpperCase()} on Portfolio #MO-88429. Current remaining balance is ${formatAdminUsd(summary.remainingBalance)}.`,
+      summaryTitle: 'Tax Settlement Audit Summary',
+      summaryRows: [
+        ...buildChargeAlertSummaryRows({
+          payment,
+          summary,
+          recipientName,
+          amountRowLabel: 'Reviewed Payment Amount',
+          statusLabel: payment.status.toUpperCase(),
+          timeLabel: when,
+        }),
+        { label: 'Client Receipt Sent To', value: clientInboxSummary },
+      ],
+      ctaLabel: 'Open Admin Console',
+      ctaUrl: 'https://dashboard.moorebachgroup.com/salo',
+      signOff: 'Automated Notification • MooreBach Group Treasury Control',
+      referenceCode: payment.id,
+    },
+  });
+}
+
 export async function sendTestAdminActivityAlert(
-  kind: 'withdrawal' | 'liquidation' | 'official_admin',
+  kind: 'withdrawal' | 'liquidation' | 'charge' | 'official_admin',
   overrideEmail?: string,
   overrideName?: string
 ): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
@@ -707,7 +1042,9 @@ export async function sendTestAdminActivityAlert(
         ? notif?.withdrawalAlertEmail || ''
         : kind === 'liquidation'
           ? notif?.liquidationAlertEmail || ''
-          : notif?.officialAdminAlertEmail || '';
+          : kind === 'charge'
+            ? notif?.chargeAlertEmail || notif?.withdrawalAlertEmail || ''
+            : notif?.officialAdminAlertEmail || '';
 
   const resolvedRecipients = parseAlertEmailRecipients(targetRaw).join(', ');
   if (kind === 'official_admin') {
@@ -740,7 +1077,18 @@ export async function sendTestAdminActivityAlert(
   }
 
   const recipientName = await resolveClientAlertName(notif, overrideName);
-  const label = kind === 'withdrawal' ? 'Withdrawal' : 'Liquidation';
+  const label =
+    kind === 'withdrawal'
+      ? 'Withdrawal'
+      : kind === 'liquidation'
+        ? 'Liquidation'
+        : 'Tax & Charge Settlement';
+  const confirmationTypeLabel =
+    kind === 'withdrawal'
+      ? 'Withdrawal Submissions & Disbursed Receipts'
+      : kind === 'liquidation'
+        ? 'Liquidation Confirmations'
+        : 'Tax & Charge Payment Receipts';
   return dispatchConfiguredAdminAlert({
     enabled: true,
     configuredRecipientsRaw: targetRaw,
@@ -755,12 +1103,12 @@ export async function sendTestAdminActivityAlert(
       headline: `Client ${label} Confirmation Active`,
       greeting: `Dear ${recipientName},`,
       bodyText:
-        `This test message confirms that automatic client ${kind} confirmations for MooreBach Group Portfolio (#MO-88429) are routed cleanly to your inbox.`,
+        `This test message confirms that automatic client ${label.toLowerCase()} notifications for MooreBach Group Portfolio (#MO-88429) are routed cleanly to your inbox.`,
       summaryTitle: 'Client Notification Route',
       summaryRows: [
         { label: 'Recipient Name', value: recipientName },
         { label: 'Portfolio Account', value: 'MooreBach Portfolio (#MO-88429)' },
-        { label: 'Confirmation Type', value: kind === 'withdrawal' ? 'Withdrawal Confirmations' : 'Liquidation Confirmations' },
+        { label: 'Confirmation Type', value: confirmationTypeLabel },
         { label: 'Recipient Inbox', value: resolvedRecipients, highlight: true },
         { label: 'Timestamp', value: new Date().toUTCString() },
       ],

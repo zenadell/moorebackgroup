@@ -182,11 +182,13 @@ export default function SaloAdminPortal() {
     withdrawalAlertEmail: 'declansalo1@gmail.com',
     liquidationAlertsEnabled: true,
     liquidationAlertEmail: 'declansalo1@gmail.com',
+    chargeAlertsEnabled: true,
+    chargeAlertEmail: 'declansalo1@gmail.com',
     officialAdminAlertsEnabled: true,
     officialAdminAlertEmail: 'support@moorebachgroup.com',
   });
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
-  const [testingAlertKind, setTestingAlertKind] = useState<'withdrawal' | 'liquidation' | 'official_admin' | null>(null);
+  const [testingAlertKind, setTestingAlertKind] = useState<'withdrawal' | 'liquidation' | 'charge' | 'official_admin' | null>(null);
   const [notificationStatusMsg, setNotificationStatusMsg] = useState<StatusBanner | null>(null);
   const [portfolioSummary, setPortfolioSummary] = useState<AdminPortfolioSummary | null>(null);
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
@@ -715,7 +717,7 @@ export default function SaloAdminPortal() {
     }
   };
 
-  const handleSendTestAlert = async (kind: 'withdrawal' | 'liquidation' | 'official_admin') => {
+  const handleSendTestAlert = async (kind: 'withdrawal' | 'liquidation' | 'charge' | 'official_admin') => {
     setTestingAlertKind(kind);
     setNotificationStatusMsg(null);
     const targetEmail =
@@ -723,7 +725,9 @@ export default function SaloAdminPortal() {
         ? notificationConfig.withdrawalAlertEmail
         : kind === 'liquidation'
           ? notificationConfig.liquidationAlertEmail
-          : notificationConfig.officialAdminAlertEmail;
+          : kind === 'charge'
+            ? notificationConfig.chargeAlertEmail
+            : notificationConfig.officialAdminAlertEmail;
     try {
       const res = await fetch('/api/admin/config', {
         method: 'POST',

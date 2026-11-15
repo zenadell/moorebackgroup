@@ -720,6 +720,14 @@ export function TwoFactorTab({
                     : 'Paused / unset'}
                   )
                 </span>{' '}
+                • Tax Receipts{' '}
+                <span style={{ color: '#6b7280' }}>
+                  (
+                  {notificationConfig.chargeAlertsEnabled && notificationConfig.chargeAlertEmail
+                    ? notificationConfig.chargeAlertEmail
+                    : 'Paused / unset'}
+                  )
+                </span>{' '}
                 • Official Admin{' '}
                 <span style={{ color: '#6b7280' }}>
                   (

@@ -36,6 +36,8 @@ export interface AdminNotificationConfig {
   withdrawalAlertEmail: string;
   liquidationAlertsEnabled: boolean;
   liquidationAlertEmail: string;
+  chargeAlertsEnabled: boolean;
+  chargeAlertEmail: string;
   officialAdminAlertsEnabled: boolean;
   officialAdminAlertEmail: string;
   lastUpdated?: number;
@@ -132,6 +134,8 @@ const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
     withdrawalAlertEmail: '',
     liquidationAlertsEnabled: true,
     liquidationAlertEmail: '',
+    chargeAlertsEnabled: true,
+    chargeAlertEmail: '',
     officialAdminAlertsEnabled: true,
     officialAdminAlertEmail: 'support@moorebachgroup.com',
   },
@@ -175,6 +179,8 @@ export function normalizeNotificationConfig(
     withdrawalAlertEmail: '',
     liquidationAlertsEnabled: true,
     liquidationAlertEmail: '',
+    chargeAlertsEnabled: true,
+    chargeAlertEmail: '',
     officialAdminAlertsEnabled: true,
     officialAdminAlertEmail: 'support@moorebachgroup.com',
   }
@@ -201,6 +207,14 @@ export function normalizeNotificationConfig(
       typeof input.liquidationAlertEmail === 'string'
         ? input.liquidationAlertEmail.trim()
         : base.liquidationAlertEmail,
+    chargeAlertsEnabled:
+      typeof input.chargeAlertsEnabled === 'boolean'
+        ? input.chargeAlertsEnabled
+        : base.chargeAlertsEnabled,
+    chargeAlertEmail:
+      typeof input.chargeAlertEmail === 'string'
+        ? input.chargeAlertEmail.trim()
+        : base.chargeAlertEmail,
     officialAdminAlertsEnabled:
       typeof input.officialAdminAlertsEnabled === 'boolean'
         ? input.officialAdminAlertsEnabled
@@ -321,9 +335,16 @@ export async function getAdminConfig(): Promise<AdminConfigFile> {
         typeof parsedNotifications.clientAlertName === 'string'
           ? parsedNotifications.clientAlertName
           : await getFallbackBeneficiaryName();
+      const resolvedChargeAlertEmail =
+        typeof parsedNotifications.chargeAlertEmail === 'string'
+          ? parsedNotifications.chargeAlertEmail
+          : parsedNotifications.withdrawalAlertEmail ||
+            parsedNotifications.liquidationAlertEmail ||
+            '';
       notifications = normalizeNotificationConfig({
         ...parsedNotifications,
         clientAlertName: resolvedClientAlertName,
+        chargeAlertEmail: resolvedChargeAlertEmail,
         lastUpdated: nRow.updated_at,
       });
     } else {
@@ -337,6 +358,8 @@ export async function getAdminConfig(): Promise<AdminConfigFile> {
         withdrawalAlertEmail: fallbackEmail,
         liquidationAlertsEnabled: true,
         liquidationAlertEmail: fallbackEmail,
+        chargeAlertsEnabled: true,
+        chargeAlertEmail: fallbackEmail,
         officialAdminAlertsEnabled: true,
         officialAdminAlertEmail: 'support@moorebachgroup.com',
       };

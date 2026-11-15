@@ -190,7 +190,7 @@ export async function submitChargePaymentClaim(input: {
   walletId: string;
   txHash?: string;
   userNote?: string;
-}): Promise<{ payment: ChargePaymentRecord; summary: AccruedChargesSummary }> {
+}): Promise<{ payment: ChargePaymentRecord; summary: AccruedChargesSummary; deduplicated: boolean }> {
   const summaryBefore = await getAccruedChargesSummary({ includeDisabledWallets: false });
   if (summaryBefore.remainingBalance <= 0) {
     throw new Error('All accrued taxes and contract charges have already been settled.');
@@ -222,7 +222,7 @@ export async function submitChargePaymentClaim(input: {
   const normalizedTxHash = input.txHash?.trim() || null;
   const normalizedNote = input.userNote?.trim() || null;
 
-  const { row: savedRow } = await dbTransaction(async (tx) => {
+  const { row: savedRow, deduplicated } = await dbTransaction(async (tx) => {
     const now = Date.now();
     // Atomic rapid double-submission guard (4s window for identical pending claim)
     const recentDuplicate = await tx.queryOne<any>(
@@ -265,7 +265,7 @@ export async function submitChargePaymentClaim(input: {
   });
 
   const summary = await getAccruedChargesSummary({ includeDisabledWallets: false });
-  return { payment: mapPaymentRow(savedRow), summary };
+  return { payment: mapPaymentRow(savedRow), summary, deduplicated };
 }
 
 export async function reviewChargePaymentClaim(input: {

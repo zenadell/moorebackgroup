@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  getLiquidatedBalance,
   getWithdrawalRequests,
   updateWithdrawalStatus,
   markWithdrawalTransferred,
   clearWithdrawalCooldown,
 } from '@/lib/admin/service';
 import { authorizeMasterRequest } from '@/lib/auth/masterAuth';
-import { sendDisbursementConfirmationEmail } from '@/lib/auth/twoFactor';
+import { sendAdminWithdrawalDisbursedNotificationEmail } from '@/lib/email/service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -72,21 +73,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Trigger official disbursement email notification
+      // Trigger official client settlement receipt + official admin audit email
       try {
-        await sendDisbursementConfirmationEmail({
-          toEmail: record.userEmail,
-          amount: record.amount,
-          asset: record.asset,
-          network: record.network,
-          destination: record.walletAddress || record.destination,
-          txHash: record.txHash || '0x...',
-          transferredAt: record.transferredAt || Date.now(),
-          beneficiary: record.beneficiary,
-          referenceId: record.id,
-        });
+        const remainingBalance = await getLiquidatedBalance();
+        await sendAdminWithdrawalDisbursedNotificationEmail(record, remainingBalance);
       } catch (err) {
-        console.error('[WITHDRAWAL_EMAIL] Notification error:', err);
+        console.error('[WITHDRAWAL_DISBURSEMENT_EMAIL] Notification error:', err);
       }
 
       const updatedList = await getWithdrawalRequests();

@@ -43,9 +43,11 @@ export async function POST(req: NextRequest) {
       const kind =
         body.testAlert.kind === 'liquidation'
           ? 'liquidation'
-          : body.testAlert.kind === 'official_admin'
-            ? 'official_admin'
-            : 'withdrawal';
+          : body.testAlert.kind === 'charge'
+            ? 'charge'
+            : body.testAlert.kind === 'official_admin'
+              ? 'official_admin'
+              : 'withdrawal';
       const email = typeof body.testAlert.email === 'string' ? body.testAlert.email.trim() : undefined;
       const recipientName = typeof body.testAlert.name === 'string' ? body.testAlert.name.trim() : undefined;
       if (email !== undefined && parseAlertEmailRecipients(email).length === 0) {

@@ -48,6 +48,8 @@ export interface NotificationConfig {
   withdrawalAlertEmail: string;
   liquidationAlertsEnabled: boolean;
   liquidationAlertEmail: string;
+  chargeAlertsEnabled: boolean;
+  chargeAlertEmail: string;
   officialAdminAlertsEnabled: boolean;
   officialAdminAlertEmail: string;
   lastUpdated?: number;

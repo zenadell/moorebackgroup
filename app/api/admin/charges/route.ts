@@ -7,6 +7,7 @@ import {
   toggleChargePaymentWallet,
   upsertChargePaymentWallet,
 } from '@/lib/charges/service';
+import { sendAdminChargePaymentReviewedEmail } from '@/lib/email/service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -120,6 +121,11 @@ export async function POST(req: NextRequest) {
         confirmedAmount,
         adminNote: typeof body.adminNote === 'string' ? body.adminNote : undefined,
       });
+      try {
+        await sendAdminChargePaymentReviewedEmail(result.payment, result.summary);
+      } catch (emailErr) {
+        console.error('[CHARGES_REVIEW_EMAIL] Notification error:', emailErr);
+      }
       return NextResponse.json(
         {
           success: true,
