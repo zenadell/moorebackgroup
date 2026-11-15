@@ -17,6 +17,7 @@ import {
   CONTRACT_END_DATE,
   CONTRACT_START_DATE,
   TOTAL_ACCRUED_TAX_AND_CHARGES,
+  TOTAL_CONTRACT_MONTHS,
   TOTAL_CUSTODY_CHARGES,
   TOTAL_STATUTORY_TAX,
 } from '@/lib/charges/schedule';
@@ -344,7 +345,12 @@ export function AccruedChargesView() {
             {TOTAL_CUSTODY_CHARGES.toLocaleString('en-US', { minimumFractionDigits: 2 })} Fee
           </strong>
           <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginTop: '3px' }}>
-            ~$1,107.29 monthly allocation
+            ~$
+            {(TOTAL_ACCRUED_TAX_AND_CHARGES / TOTAL_CONTRACT_MONTHS).toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}{' '}
+            monthly allocation
           </span>
         </div>
 

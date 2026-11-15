@@ -14,9 +14,10 @@ import {
   Wallet,
 } from 'lucide-react';
 import { ModernButtonSpinner } from '@/components/ui/ModernLoader';
-import type {
-  AccruedChargesSummary,
-  ChargePaymentWallet,
+import {
+  TOTAL_ACCRUED_TAX_AND_CHARGES,
+  type AccruedChargesSummary,
+  type ChargePaymentWallet,
 } from '@/lib/charges/schedule';
 import {
   StatusBanner,
@@ -205,7 +206,12 @@ export function TaxChargesTab({
               Contract Taxes &amp; Sequential Debt Settlement
             </h2>
             <p style={{ fontSize: '12.5px', color: '#6b7280', margin: 0 }}>
-              Approve incoming &quot;I Have Paid&quot; installment deposits to deduct them from the $26,574.86 contract total.
+              Approve incoming &quot;I Have Paid&quot; installment deposits to deduct them from the $
+              {TOTAL_ACCRUED_TAX_AND_CHARGES.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              contract total.
             </p>
           </div>
           <button

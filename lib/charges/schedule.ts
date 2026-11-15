@@ -53,7 +53,7 @@ export interface AccruedChargesSummary {
   payments: ChargePaymentRecord[];
 }
 
-export const TOTAL_ACCRUED_TAX_AND_CHARGES = 26574.86;
+export const TOTAL_ACCRUED_TAX_AND_CHARGES = 31677.87;
 export const CONTRACT_START_DATE = 'Nov 16, 2024';
 export const CONTRACT_END_DATE = 'Nov 16, 2026';
 export const TOTAL_CONTRACT_MONTHS = 24;
@@ -323,7 +323,7 @@ const CHRONOLOGICAL_SCHEDULE: Array<{
   },
 ];
 
-// 14 months at $1,107.29 + 10 months at $1,107.28 = $26,574.86 exact to the cent
+// 3 months at $1,319.92 + 21 months at $1,319.91 = $31,677.87 exact to the cent
 const ASCENDING_LEDGER: AccruedChargeEntry[] = (() => {
   let running = 0;
   return CHRONOLOGICAL_SCHEDULE.map((item) => {
@@ -336,9 +336,9 @@ const ASCENDING_LEDGER: AccruedChargeEntry[] = (() => {
         cumulativeTotal: 0,
       };
     }
-    const monthlyTotal = item.cycle <= 14 ? 1107.29 : 1107.28;
-    const statutoryTax = item.cycle <= 14 ? 841.54 : 841.53;
-    const custodyCharge = 265.75;
+    const monthlyTotal = item.cycle <= 3 ? 1319.92 : 1319.91;
+    const statutoryTax = item.cycle <= 3 ? 1003.14 : 1003.13;
+    const custodyCharge = 316.78;
     running = Number((running + monthlyTotal).toFixed(2));
     return {
       ...item,
