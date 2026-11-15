@@ -47,13 +47,14 @@ export async function POST(req: NextRequest) {
             ? 'official_admin'
             : 'withdrawal';
       const email = typeof body.testAlert.email === 'string' ? body.testAlert.email.trim() : undefined;
+      const recipientName = typeof body.testAlert.name === 'string' ? body.testAlert.name.trim() : undefined;
       if (email !== undefined && parseAlertEmailRecipients(email).length === 0) {
         return NextResponse.json(
           { success: false, error: 'Enter a valid email address before sending a test alert.' },
           { status: 400, headers: NO_STORE_HEADERS }
         );
       }
-      const res = await sendTestAdminActivityAlert(kind, email);
+      const res = await sendTestAdminActivityAlert(kind, email, recipientName);
       if (!res.dispatched) {
         return NextResponse.json(
           {

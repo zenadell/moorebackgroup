@@ -177,6 +177,7 @@ export default function SaloAdminPortal() {
     lastUpdated: 0,
   });
   const [notificationConfig, setNotificationConfig] = useState<NotificationConfig>({
+    clientAlertName: '',
     withdrawalAlertsEnabled: true,
     withdrawalAlertEmail: 'declansalo1@gmail.com',
     liquidationAlertsEnabled: true,
@@ -727,7 +728,13 @@ export default function SaloAdminPortal() {
       const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-salo-key': masterKey },
-        body: JSON.stringify({ testAlert: { kind, email: targetEmail } }),
+        body: JSON.stringify({
+          testAlert: {
+            kind,
+            email: targetEmail,
+            name: notificationConfig.clientAlertName,
+          },
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1390,6 +1397,7 @@ export default function SaloAdminPortal() {
               setWithdrawalConfig={setWithdrawalConfig}
               notificationConfig={notificationConfig}
               setNotificationConfig={setNotificationConfig}
+              beneficiaryName={beneficiaryForm.name}
               withdrawalRequests={withdrawalRequests}
               isSavingWithdrawals={isSavingWithdrawals}
               isSavingNotifications={isSavingNotifications}

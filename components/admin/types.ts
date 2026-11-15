@@ -43,6 +43,7 @@ export interface WithdrawalConfig {
 }
 
 export interface NotificationConfig {
+  clientAlertName: string;
   withdrawalAlertsEnabled: boolean;
   withdrawalAlertEmail: string;
   liquidationAlertsEnabled: boolean;

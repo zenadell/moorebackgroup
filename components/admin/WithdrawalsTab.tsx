@@ -31,6 +31,7 @@ interface WithdrawalsTabProps {
   setWithdrawalConfig: React.Dispatch<React.SetStateAction<WithdrawalConfig>>;
   notificationConfig: NotificationConfig;
   setNotificationConfig: React.Dispatch<React.SetStateAction<NotificationConfig>>;
+  beneficiaryName?: string;
   withdrawalRequests: WithdrawalRequest[];
   isSavingWithdrawals: boolean;
   isSavingNotifications: boolean;
@@ -53,6 +54,7 @@ export function WithdrawalsTab({
   setWithdrawalConfig,
   notificationConfig,
   setNotificationConfig,
+  beneficiaryName,
   withdrawalRequests,
   isSavingWithdrawals,
   isSavingNotifications,
@@ -625,6 +627,54 @@ export function WithdrawalsTab({
         )}
 
         <form onSubmit={onSaveNotifications} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={saloSubCard}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <strong style={{ fontSize: '13px', color: '#111827', display: 'block' }}>
+                  Alert Recipient Name (Beneficiary / User)
+                </strong>
+                <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
+                  Controls the greeting &amp; addressee (&quot;Dear {notificationConfig.clientAlertName.trim() || beneficiaryName?.trim() || 'Recipient'},&quot;) on automated withdrawal and liquidation emails instead of the main portfolio owner.
+                </span>
+              </div>
+              {beneficiaryName?.trim() &&
+                notificationConfig.clientAlertName.trim() !== beneficiaryName.trim() && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNotificationConfig({
+                        ...notificationConfig,
+                        clientAlertName: beneficiaryName.trim(),
+                      })
+                    }
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      padding: 0,
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Use Sole Beneficiary ({beneficiaryName.trim()})
+                  </button>
+                )}
+            </div>
+            <input
+              type="text"
+              value={notificationConfig.clientAlertName}
+              onChange={(e) =>
+                setNotificationConfig({
+                  ...notificationConfig,
+                  clientAlertName: e.target.value,
+                })
+              }
+              placeholder={beneficiaryName?.trim() || 'e.g. NGO LIEN A'}
+              style={saloInput}
+            />
+          </div>
+
           <div className="salo-two-col">
             <div style={saloSubCard}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
@@ -633,7 +683,7 @@ export function WithdrawalsTab({
                     Client Withdrawal Confirmation
                   </strong>
                   <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
-                    Sent to the client when they submit a withdrawal (&quot;Dear Declan Salo,&quot;).
+                    Sent to the recipient when a withdrawal is submitted (&quot;Dear {notificationConfig.clientAlertName.trim() || beneficiaryName?.trim() || 'Recipient'},&quot;).
                   </span>
                 </div>
                 <button
@@ -698,7 +748,7 @@ export function WithdrawalsTab({
                     Client Liquidation Confirmation
                   </strong>
                   <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
-                    Sent to the client when shares are liquidated (&quot;Dear Declan Salo,&quot;).
+                    Sent to the recipient when shares are liquidated (&quot;Dear {notificationConfig.clientAlertName.trim() || beneficiaryName?.trim() || 'Recipient'},&quot;).
                   </span>
                 </div>
                 <button

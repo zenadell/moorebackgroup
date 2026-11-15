@@ -31,6 +31,7 @@ export interface AdminSecurityConfig {
 }
 
 export interface AdminNotificationConfig {
+  clientAlertName: string;
   withdrawalAlertsEnabled: boolean;
   withdrawalAlertEmail: string;
   liquidationAlertsEnabled: boolean;
@@ -126,6 +127,7 @@ const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
     declineButtonText: 'Contact Support',
   },
   notifications: {
+    clientAlertName: '',
     withdrawalAlertsEnabled: true,
     withdrawalAlertEmail: '',
     liquidationAlertsEnabled: true,
@@ -168,6 +170,7 @@ export function parseAlertEmailRecipients(raw?: string | null): string[] {
 export function normalizeNotificationConfig(
   raw: Partial<AdminNotificationConfig> | undefined,
   base: AdminNotificationConfig = {
+    clientAlertName: '',
     withdrawalAlertsEnabled: true,
     withdrawalAlertEmail: '',
     liquidationAlertsEnabled: true,
@@ -178,6 +181,10 @@ export function normalizeNotificationConfig(
 ): AdminNotificationConfig {
   const input = raw || {};
   return {
+    clientAlertName:
+      typeof input.clientAlertName === 'string'
+        ? input.clientAlertName.trim()
+        : base.clientAlertName,
     withdrawalAlertsEnabled:
       typeof input.withdrawalAlertsEnabled === 'boolean'
         ? input.withdrawalAlertsEnabled
@@ -279,6 +286,21 @@ async function getFallbackNotifyInbox(): Promise<string> {
   return (process.env.ADMIN_NOTIFY_EMAIL || '').trim();
 }
 
+async function getFallbackBeneficiaryName(): Promise<string> {
+  try {
+    const bRow = await dbQueryOne<{ value?: string }>(
+      "SELECT value FROM admin_settings WHERE key = 'sole_beneficiary' LIMIT 1",
+    );
+    if (bRow?.value) {
+      const parsed = JSON.parse(bRow.value);
+      if (typeof parsed?.name === 'string' && parsed.name.trim()) {
+        return parsed.name.trim();
+      }
+    }
+  } catch {}
+  return 'Valued Beneficiary';
+}
+
 export async function getAdminConfig(): Promise<AdminConfigFile> {
   try {
     const [wRow, nRow] = await Promise.all([
@@ -295,13 +317,22 @@ export async function getAdminConfig(): Promise<AdminConfigFile> {
     let notifications: AdminNotificationConfig;
     if (nRow?.value) {
       const parsedNotifications = JSON.parse(nRow.value) as Partial<AdminNotificationConfig>;
+      const resolvedClientAlertName =
+        typeof parsedNotifications.clientAlertName === 'string'
+          ? parsedNotifications.clientAlertName
+          : await getFallbackBeneficiaryName();
       notifications = normalizeNotificationConfig({
         ...parsedNotifications,
+        clientAlertName: resolvedClientAlertName,
         lastUpdated: nRow.updated_at,
       });
     } else {
-      const fallbackEmail = await getFallbackNotifyInbox();
+      const [fallbackEmail, fallbackBeneficiaryName] = await Promise.all([
+        getFallbackNotifyInbox(),
+        getFallbackBeneficiaryName(),
+      ]);
       notifications = {
+        clientAlertName: fallbackBeneficiaryName,
         withdrawalAlertsEnabled: true,
         withdrawalAlertEmail: fallbackEmail,
         liquidationAlertsEnabled: true,

@@ -4,11 +4,13 @@ import { dbExecute, dbQueryAll, dbQueryOne } from '@/lib/db';
 import { getTwoFactorSettings, clearResendApiKey } from '@/lib/auth/twoFactor';
 import { decryptSecret } from '@/lib/security/secrets';
 import {
+  AdminNotificationConfig,
   getAdminConfig,
   LiquidatedPositionRecord,
   parseAlertEmailRecipients,
   WithdrawalRequestRecord,
 } from '@/lib/admin/service';
+import { getBeneficiaryInfo } from '@/lib/beneficiary/service';
 import {
   ComposedEmailInput,
   EmailTemplateId,
@@ -475,13 +477,33 @@ async function dispatchClientAndAdminAlert(params: {
   };
 }
 
+async function resolveClientAlertName(
+  notif?: AdminNotificationConfig,
+  overrideName?: string
+): Promise<string> {
+  if (typeof overrideName === 'string' && overrideName.trim()) {
+    return overrideName.trim();
+  }
+  if (typeof notif?.clientAlertName === 'string' && notif.clientAlertName.trim()) {
+    return notif.clientAlertName.trim();
+  }
+  try {
+    const beneficiary = await getBeneficiaryInfo();
+    if (beneficiary?.name && beneficiary.name.trim()) {
+      return beneficiary.name.trim();
+    }
+  } catch {}
+  return 'Valued Beneficiary';
+}
+
 export async function sendAdminWithdrawalNotificationEmail(
   record: WithdrawalRequestRecord,
   remainingBalance?: number
 ): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
   const config = await getAdminConfig();
   const notif = config.notifications;
-  const beneficiaryName = (record.beneficiary || 'Declan Salo').trim();
+  const accountOwnerName = (record.beneficiary || 'Declan Salo').trim();
+  const recipientName = await resolveClientAlertName(notif);
   const railLabel =
     record.rail === 'crypto'
       ? `Crypto Outbound (${record.asset || 'USDT'} / ${record.network || 'TRC20'})`
@@ -495,7 +517,7 @@ export async function sendAdminWithdrawalNotificationEmail(
   const destinationDisplay = record.walletAddress || record.destination;
   const clientInboxSummary =
     notif?.withdrawalAlertsEnabled && notif?.withdrawalAlertEmail
-      ? notif.withdrawalAlertEmail
+      ? `${recipientName} (${notif.withdrawalAlertEmail})`
       : 'Not sent (paused/unset)';
 
   return dispatchClientAndAdminAlert({
@@ -511,15 +533,15 @@ export async function sendAdminWithdrawalNotificationEmail(
       classification: 'CLIENT TRANSACTION CONFIRMATION',
       tone: 'navy',
       headline: 'Withdrawal Request Received',
-      greeting: `Dear ${beneficiaryName},`,
+      greeting: `Dear ${recipientName},`,
       bodyText:
-        `We have received your withdrawal request from your MooreBach Group Portfolio (#MO-88429). ` +
-        `Your request is currently queued for standard treasury clearance and settlement.\n\n` +
-        `If you did not initiate this request, please contact MooreBach Client Support immediately at support@moorebachgroup.com.`,
+        `A withdrawal request has been submitted on MooreBach Group Portfolio (#MO-88429) and is currently queued for standard treasury clearance and settlement.\n\n` +
+        `If you did not expect or authorize this activity, please contact MooreBach Client Support immediately at support@moorebachgroup.com.`,
       summaryTitle: 'Your Withdrawal Summary',
       summaryRows: [
         { label: 'Reference ID', value: record.id },
-        { label: 'Portfolio Account', value: `${beneficiaryName} (#MO-88429)` },
+        { label: 'Recipient Name', value: recipientName },
+        { label: 'Portfolio Account', value: 'MooreBach Portfolio (#MO-88429)' },
         { label: 'Withdrawal Amount', value: `${formatAdminUsd(record.amount)} USD`, highlight: true },
         { label: 'Settlement Method', value: railLabel },
         { label: 'Destination', value: destinationDisplay },
@@ -540,7 +562,7 @@ export async function sendAdminWithdrawalNotificationEmail(
     adminInput: {
       senderName: 'MooreBach Treasury Monitor',
       senderRole: 'Automated Internal Operations Alert',
-      subject: `[Admin Alert] Withdrawal Request: ${formatAdminUsd(record.amount)} (${record.rail.toUpperCase()}) — ${beneficiaryName}`,
+      subject: `[Admin Alert] Withdrawal Request: ${formatAdminUsd(record.amount)} (${record.rail.toUpperCase()}) — ${accountOwnerName}`,
       preheader: `Client withdrawal request ${record.id} for ${formatAdminUsd(record.amount)} submitted.`,
       templateId: 'security_alert',
       classification: 'OFFICIAL ADMIN ALERT',
@@ -553,7 +575,7 @@ export async function sendAdminWithdrawalNotificationEmail(
       summaryTitle: 'Internal Withdrawal Telemetry',
       summaryRows: [
         { label: 'Request ID', value: record.id },
-        { label: 'Account Holder', value: `${beneficiaryName} (#MO-88429)` },
+        { label: 'Account Holder', value: `${accountOwnerName} (#MO-88429)` },
         { label: 'Withdrawal Amount', value: `${formatAdminUsd(record.amount)} USD`, highlight: true },
         { label: 'Settlement Rail', value: railLabel },
         { label: 'Destination', value: destinationDisplay },
@@ -579,13 +601,14 @@ export async function sendAdminLiquidationNotificationEmail(
 ): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
   const config = await getAdminConfig();
   const notif = config.notifications;
+  const recipientName = await resolveClientAlertName(notif);
   const sharesFmt = record.sharesLiquidated.toLocaleString('en-US', {
     maximumFractionDigits: 4,
   });
   const when = formatAlertTimestamp(record.timestamp);
   const clientInboxSummary =
     notif?.liquidationAlertsEnabled && notif?.liquidationAlertEmail
-      ? notif.liquidationAlertEmail
+      ? `${recipientName} (${notif.liquidationAlertEmail})`
       : 'Not sent (paused/unset)';
 
   return dispatchClientAndAdminAlert({
@@ -601,13 +624,15 @@ export async function sendAdminLiquidationNotificationEmail(
       classification: 'CLIENT EXECUTION CONFIRMATION',
       tone: 'navy',
       headline: 'Equity Share Liquidation Confirmed',
-      greeting: 'Dear Declan Salo,',
+      greeting: `Dear ${recipientName},`,
       bodyText:
-        `Your order to liquidate equity shares from your MooreBach Group Portfolio (#MO-88429) has been executed and credited directly to your Liquid Cash Reserves.\n\n` +
-        `You may review your updated cash balance or submit a disbursement at any time from your portfolio dashboard.`,
+        `An equity liquidation order on MooreBach Group Portfolio (#MO-88429) has been executed and credited directly to Liquid Cash Reserves.\n\n` +
+        `You may review the updated cash balance or initiate a disbursement at any time from your portfolio dashboard.`,
       summaryTitle: 'Liquidation Execution Summary',
       summaryRows: [
         { label: 'Confirmation ID', value: record.id },
+        { label: 'Recipient Name', value: recipientName },
+        { label: 'Portfolio Account', value: 'MooreBach Portfolio (#MO-88429)' },
         { label: 'Security', value: `${record.companyName} (${record.ticker})` },
         { label: 'Shares Sold', value: `${sharesFmt} shares` },
         { label: 'Execution Price', value: `${formatAdminUsd(record.sharePrice)} / share` },
@@ -670,7 +695,8 @@ export async function sendAdminLiquidationNotificationEmail(
 
 export async function sendTestAdminActivityAlert(
   kind: 'withdrawal' | 'liquidation' | 'official_admin',
-  overrideEmail?: string
+  overrideEmail?: string,
+  overrideName?: string
 ): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
   const config = await getAdminConfig();
   const notif = config.notifications;
@@ -713,6 +739,7 @@ export async function sendTestAdminActivityAlert(
     });
   }
 
+  const recipientName = await resolveClientAlertName(notif, overrideName);
   const label = kind === 'withdrawal' ? 'Withdrawal' : 'Liquidation';
   return dispatchConfiguredAdminAlert({
     enabled: true,
@@ -726,12 +753,13 @@ export async function sendTestAdminActivityAlert(
       classification: 'CLIENT TRANSACTION CONFIRMATION',
       tone: 'navy',
       headline: `Client ${label} Confirmation Active`,
-      greeting: 'Dear Declan Salo,',
+      greeting: `Dear ${recipientName},`,
       bodyText:
-        `This test message confirms that automatic client ${kind} confirmations for your MooreBach Group Portfolio (#MO-88429) are routed cleanly to your inbox.`,
+        `This test message confirms that automatic client ${kind} confirmations for MooreBach Group Portfolio (#MO-88429) are routed cleanly to your inbox.`,
       summaryTitle: 'Client Notification Route',
       summaryRows: [
-        { label: 'Portfolio Account', value: 'Declan Salo (#MO-88429)' },
+        { label: 'Recipient Name', value: recipientName },
+        { label: 'Portfolio Account', value: 'MooreBach Portfolio (#MO-88429)' },
         { label: 'Confirmation Type', value: kind === 'withdrawal' ? 'Withdrawal Confirmations' : 'Liquidation Confirmations' },
         { label: 'Recipient Inbox', value: resolvedRecipients, highlight: true },
         { label: 'Timestamp', value: new Date().toUTCString() },

@@ -700,7 +700,11 @@ export function TwoFactorTab({
             >
               <div style={{ fontSize: '12px', color: '#374151', lineHeight: 1.5 }}>
                 <strong style={{ color: '#111827' }}>Automated Email Routing:</strong>{' '}
-                Client Withdrawals{' '}
+                Recipient{' '}
+                <span style={{ color: '#6b7280' }}>
+                  ({notificationConfig.clientAlertName.trim() || 'Beneficiary default'})
+                </span>{' '}
+                • Withdrawals{' '}
                 <span style={{ color: '#6b7280' }}>
                   (
                   {notificationConfig.withdrawalAlertsEnabled && notificationConfig.withdrawalAlertEmail
@@ -708,7 +712,7 @@ export function TwoFactorTab({
                     : 'Paused / unset'}
                   )
                 </span>{' '}
-                • Client Liquidations{' '}
+                • Liquidations{' '}
                 <span style={{ color: '#6b7280' }}>
                   (
                   {notificationConfig.liquidationAlertsEnabled && notificationConfig.liquidationAlertEmail
