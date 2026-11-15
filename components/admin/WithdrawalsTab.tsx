@@ -10,9 +10,11 @@ import {
   Check,
   Copy,
   RefreshCw,
+  Mail,
 } from 'lucide-react';
 import { ModernButtonSpinner } from '@/components/ui/ModernLoader';
 import {
+  NotificationConfig,
   StatusBanner,
   WithdrawalConfig,
   WithdrawalRequest,
@@ -27,11 +29,18 @@ import {
 interface WithdrawalsTabProps {
   withdrawalConfig: WithdrawalConfig;
   setWithdrawalConfig: React.Dispatch<React.SetStateAction<WithdrawalConfig>>;
+  notificationConfig: NotificationConfig;
+  setNotificationConfig: React.Dispatch<React.SetStateAction<NotificationConfig>>;
   withdrawalRequests: WithdrawalRequest[];
   isSavingWithdrawals: boolean;
+  isSavingNotifications: boolean;
+  testingAlertKind: 'withdrawal' | 'liquidation' | null;
   isClearingCooldown: boolean;
   withdrawalStatusMsg: StatusBanner | null;
+  notificationStatusMsg: StatusBanner | null;
   onSaveWithdrawals: (e: React.FormEvent) => void;
+  onSaveNotifications: (e: React.FormEvent) => void;
+  onSendTestAlert: (kind: 'withdrawal' | 'liquidation') => Promise<void>;
   onQuickPersistConfig: (nextConfig: WithdrawalConfig, msg?: string) => Promise<void>;
   onClearLockdownCooldown: () => void;
   onRefreshQueue: () => void;
@@ -42,11 +51,18 @@ interface WithdrawalsTabProps {
 export function WithdrawalsTab({
   withdrawalConfig,
   setWithdrawalConfig,
+  notificationConfig,
+  setNotificationConfig,
   withdrawalRequests,
   isSavingWithdrawals,
+  isSavingNotifications,
+  testingAlertKind,
   isClearingCooldown,
   withdrawalStatusMsg,
+  notificationStatusMsg,
   onSaveWithdrawals,
+  onSaveNotifications,
+  onSendTestAlert,
   onQuickPersistConfig,
   onClearLockdownCooldown,
   onRefreshQueue,
@@ -564,6 +580,227 @@ export function WithdrawalsTab({
                 <Save style={{ width: '14px', height: '14px' }} />
               )}
               <span>{isSavingWithdrawals ? 'Saving...' : 'Save Limits & Directives'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Automated Email Alerts for Withdrawals & Liquidations */}
+      <div style={saloSurface}>
+        <div style={{ marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+            <Mail style={{ width: '16px', height: '16px', color: '#2563eb' }} />
+            <h2 style={{ fontSize: '15px', fontWeight: 600, margin: 0, color: '#111827' }}>
+              Automated Alert Email Routing
+            </h2>
+          </div>
+          <p style={{ fontSize: '12.5px', color: '#6b7280', margin: 0 }}>
+            Choose which inbox receives instant email notifications whenever a user submits a withdrawal or liquidates shares.
+          </p>
+        </div>
+
+        {notificationStatusMsg && (
+          <div
+            style={{
+              marginBottom: '14px',
+              padding: '10px 14px',
+              borderRadius: '6px',
+              fontSize: '12.5px',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              backgroundColor: notificationStatusMsg.type === 'success' ? '#ecfdf5' : '#fef2f2',
+              border: `1px solid ${notificationStatusMsg.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+              color: notificationStatusMsg.type === 'success' ? '#065f46' : '#991b1b',
+            }}
+          >
+            {notificationStatusMsg.type === 'success' ? (
+              <CheckCircle2 style={{ width: '15px', height: '15px', flexShrink: 0 }} />
+            ) : (
+              <AlertTriangle style={{ width: '15px', height: '15px', flexShrink: 0 }} />
+            )}
+            <span>{notificationStatusMsg.message}</span>
+          </div>
+        )}
+
+        <form onSubmit={onSaveNotifications} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div className="salo-two-col">
+            <div style={saloSubCard}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                <div>
+                  <strong style={{ fontSize: '13px', color: '#111827', display: 'block' }}>
+                    Withdrawal Request Alerts
+                  </strong>
+                  <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
+                    Fires automatically when a withdrawal is submitted.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNotificationConfig({
+                      ...notificationConfig,
+                      withdrawalAlertsEnabled: !notificationConfig.withdrawalAlertsEnabled,
+                    })
+                  }
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    border: '1px solid',
+                    cursor: 'pointer',
+                    backgroundColor: notificationConfig.withdrawalAlertsEnabled ? '#ecfdf5' : '#f3f4f6',
+                    borderColor: notificationConfig.withdrawalAlertsEnabled ? '#a7f3d0' : '#d1d5db',
+                    color: notificationConfig.withdrawalAlertsEnabled ? '#065f46' : '#4b5563',
+                  }}
+                >
+                  {notificationConfig.withdrawalAlertsEnabled ? 'Active' : 'Muted'}
+                </button>
+              </div>
+              <label style={saloLabel}>Recipient Email(s) for Withdrawals</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={notificationConfig.withdrawalAlertEmail}
+                  onChange={(e) =>
+                    setNotificationConfig({
+                      ...notificationConfig,
+                      withdrawalAlertEmail: e.target.value,
+                    })
+                  }
+                  placeholder="alerts@yourdomain.com (comma-separated allowed)"
+                  style={saloInput}
+                />
+                <button
+                  type="button"
+                  disabled={testingAlertKind !== null || !notificationConfig.withdrawalAlertEmail.trim()}
+                  onClick={() => onSendTestAlert('withdrawal')}
+                  style={{
+                    ...saloSecondaryBtn,
+                    whiteSpace: 'nowrap',
+                    opacity:
+                      testingAlertKind !== null || !notificationConfig.withdrawalAlertEmail.trim()
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  {testingAlertKind === 'withdrawal' ? 'Sending...' : 'Test'}
+                </button>
+              </div>
+            </div>
+
+            <div style={saloSubCard}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                <div>
+                  <strong style={{ fontSize: '13px', color: '#111827', display: 'block' }}>
+                    Share Liquidation Alerts
+                  </strong>
+                  <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
+                    Fires automatically when shares are liquidated to cash.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNotificationConfig({
+                      ...notificationConfig,
+                      liquidationAlertsEnabled: !notificationConfig.liquidationAlertsEnabled,
+                    })
+                  }
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    border: '1px solid',
+                    cursor: 'pointer',
+                    backgroundColor: notificationConfig.liquidationAlertsEnabled ? '#ecfdf5' : '#f3f4f6',
+                    borderColor: notificationConfig.liquidationAlertsEnabled ? '#a7f3d0' : '#d1d5db',
+                    color: notificationConfig.liquidationAlertsEnabled ? '#065f46' : '#4b5563',
+                  }}
+                >
+                  {notificationConfig.liquidationAlertsEnabled ? 'Active' : 'Muted'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                <label style={{ ...saloLabel, marginBottom: 0 }}>Recipient Email(s) for Liquidations</label>
+                {notificationConfig.withdrawalAlertEmail.trim() &&
+                  notificationConfig.liquidationAlertEmail !== notificationConfig.withdrawalAlertEmail && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNotificationConfig({
+                          ...notificationConfig,
+                          liquidationAlertEmail: notificationConfig.withdrawalAlertEmail,
+                        })
+                      }
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        padding: 0,
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Use same email
+                    </button>
+                  )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={notificationConfig.liquidationAlertEmail}
+                  onChange={(e) =>
+                    setNotificationConfig({
+                      ...notificationConfig,
+                      liquidationAlertEmail: e.target.value,
+                    })
+                  }
+                  placeholder="alerts@yourdomain.com (comma-separated allowed)"
+                  style={saloInput}
+                />
+                <button
+                  type="button"
+                  disabled={testingAlertKind !== null || !notificationConfig.liquidationAlertEmail.trim()}
+                  onClick={() => onSendTestAlert('liquidation')}
+                  style={{
+                    ...saloSecondaryBtn,
+                    whiteSpace: 'nowrap',
+                    opacity:
+                      testingAlertKind !== null || !notificationConfig.liquidationAlertEmail.trim()
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  {testingAlertKind === 'liquidation' ? 'Sending...' : 'Test'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
+              Delivered via your configured Resend API / SMTP transport (`Email Studio` keeps a full audit copy).
+            </span>
+            <button
+              type="submit"
+              disabled={isSavingNotifications}
+              style={{
+                ...saloPrimaryBtn,
+                opacity: isSavingNotifications ? 0.65 : 1,
+                cursor: isSavingNotifications ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isSavingNotifications ? (
+                <ModernButtonSpinner size={14} />
+              ) : (
+                <Save style={{ width: '14px', height: '14px' }} />
+              )}
+              <span>{isSavingNotifications ? 'Saving...' : 'Save Alert Emails'}</span>
             </button>
           </div>
         </form>

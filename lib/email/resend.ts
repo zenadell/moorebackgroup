@@ -165,7 +165,12 @@ export async function sendViaResend(params: ResendSendParams): Promise<ResendSen
   }
 
   try {
-    const recipients = Array.isArray(params.to) ? params.to : [params.to];
+    const recipients = Array.isArray(params.to)
+      ? params.to.map((r) => r.trim()).filter(Boolean)
+      : params.to
+          .split(/[;,]/)
+          .map((r) => r.trim())
+          .filter(Boolean);
     const normalizedFrom = extractEmailAddress(params.from).toLowerCase();
     const normalizedReplyTo = extractEmailAddress(params.replyTo || '').toLowerCase();
     const includeReplyTo =
@@ -179,6 +184,7 @@ export async function sendViaResend(params: ResendSendParams): Promise<ResendSen
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(6000),
       body: JSON.stringify({
         from: params.from,
         to: recipients,

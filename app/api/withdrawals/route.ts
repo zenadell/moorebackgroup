@@ -11,6 +11,7 @@ import {
 } from '@/lib/admin/service';
 import { parseDeviceFromUserAgent } from '@/lib/auth/serverStore';
 import { validateCryptoAddress } from '@/lib/crypto/blockchain';
+import { sendAdminWithdrawalNotificationEmail } from '@/lib/email/service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -235,12 +236,21 @@ export async function POST(req: NextRequest) {
       userEmail: userEmail || 'declansalo1@gmail.com',
     });
 
+    const remainingAfter = Math.max(0, availableBalance - parsedAmount);
+
+    // 5. Automatically alert the configured admin email(s)
+    try {
+      await sendAdminWithdrawalNotificationEmail(recorded, remainingAfter);
+    } catch (emailErr) {
+      console.error('[WITHDRAWAL_ADMIN_ALERT] Email dispatch error:', emailErr);
+    }
+
     return NextResponse.json({
       success: true,
       blocked: false,
       message: 'Withdrawal request submitted successfully and dispatched to admin queue.',
       record: recorded,
-      remainingBalance: Math.max(0, availableBalance - parsedAmount),
+      remainingBalance: remainingAfter,
     });
   } catch (err: any) {
     return NextResponse.json(

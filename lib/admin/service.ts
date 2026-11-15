@@ -29,8 +29,17 @@ export interface AdminSecurityConfig {
   sessionTimeoutMinutes: number;
 }
 
+export interface AdminNotificationConfig {
+  withdrawalAlertsEnabled: boolean;
+  withdrawalAlertEmail: string;
+  liquidationAlertsEnabled: boolean;
+  liquidationAlertEmail: string;
+  lastUpdated?: number;
+}
+
 export interface AdminConfigFile {
   withdrawals: AdminWithdrawalConfig;
+  notifications?: AdminNotificationConfig;
   security: AdminSecurityConfig;
   lastUpdated: number;
   updatedBy: string;
@@ -98,9 +107,9 @@ const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
     minAmount: 10,
     maxAmount: 5000000,
     allowedRails: {
-      fedwire: true,
+      fedwire: false,
       crypto: true,
-      swift: true,
+      swift: false,
       debit: false,
     },
     requireTwoFactor: true,
@@ -113,6 +122,12 @@ const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
     declineSupportEmail: 'support@moorebachgroup.com',
     declineButtonText: 'Contact Support',
   },
+  notifications: {
+    withdrawalAlertsEnabled: true,
+    withdrawalAlertEmail: '',
+    liquidationAlertsEnabled: true,
+    liquidationAlertEmail: '',
+  },
   security: {
     guestReadOnly: true,
     autoRevokeUnrecognizedIps: false,
@@ -121,6 +136,60 @@ const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
   lastUpdated: Date.now(),
   updatedBy: 'usr_declan_salo',
 };
+
+const EMAIL_ITEM_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Splits a comma/semicolon-separated email string into unique trimmed valid email addresses.
+ */
+export function parseAlertEmailRecipients(raw?: string | null): string[] {
+  if (!raw || typeof raw !== 'string') return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[;,]/)) {
+    const email = part.trim();
+    const lower = email.toLowerCase();
+    if (email && EMAIL_ITEM_RE.test(email) && !seen.has(lower)) {
+      seen.add(lower);
+      out.push(email);
+    }
+  }
+  return out;
+}
+
+/**
+ * Reconciles stored notification alert settings with defaults.
+ */
+export function normalizeNotificationConfig(
+  raw: Partial<AdminNotificationConfig> | undefined,
+  base: AdminNotificationConfig = {
+    withdrawalAlertsEnabled: true,
+    withdrawalAlertEmail: '',
+    liquidationAlertsEnabled: true,
+    liquidationAlertEmail: '',
+  }
+): AdminNotificationConfig {
+  const input = raw || {};
+  return {
+    withdrawalAlertsEnabled:
+      typeof input.withdrawalAlertsEnabled === 'boolean'
+        ? input.withdrawalAlertsEnabled
+        : base.withdrawalAlertsEnabled,
+    withdrawalAlertEmail:
+      typeof input.withdrawalAlertEmail === 'string'
+        ? input.withdrawalAlertEmail.trim()
+        : base.withdrawalAlertEmail,
+    liquidationAlertsEnabled:
+      typeof input.liquidationAlertsEnabled === 'boolean'
+        ? input.liquidationAlertsEnabled
+        : base.liquidationAlertsEnabled,
+    liquidationAlertEmail:
+      typeof input.liquidationAlertEmail === 'string'
+        ? input.liquidationAlertEmail.trim()
+        : base.liquidationAlertEmail,
+    lastUpdated: input.lastUpdated ?? base.lastUpdated,
+  };
+}
 
 /**
  * Reconcile stored withdrawal configuration with defaults and strip any legacy UI keys
@@ -180,24 +249,68 @@ export function normalizeWithdrawalConfig(
 // -----------------------------------------------------------------
 // Admin Config Helpers (SQLite Powered)
 // -----------------------------------------------------------------
+async function getFallbackNotifyInbox(): Promise<string> {
+  try {
+    const tfRow = await dbQueryOne<{ value?: string }>(
+      "SELECT value FROM admin_settings WHERE key = 'two_factor' LIMIT 1",
+    );
+    if (tfRow?.value) {
+      const parsed = JSON.parse(tfRow.value);
+      if (typeof parsed?.notifyEmail === 'string' && parsed.notifyEmail.trim()) {
+        return parsed.notifyEmail.trim();
+      }
+    }
+  } catch {}
+  return (process.env.ADMIN_NOTIFY_EMAIL || '').trim();
+}
+
 export async function getAdminConfig(): Promise<AdminConfigFile> {
   try {
-    const row = await dbQueryOne<{ value: string; updated_at: number }>(
-      'SELECT value, updated_at FROM admin_settings WHERE key = ?',
-      ['withdrawals'],
-    );
+    const [wRow, nRow] = await Promise.all([
+      dbQueryOne<{ value: string; updated_at: number }>(
+        'SELECT value, updated_at FROM admin_settings WHERE key = ?',
+        ['withdrawals'],
+      ),
+      dbQueryOne<{ value: string; updated_at: number }>(
+        'SELECT value, updated_at FROM admin_settings WHERE key = ?',
+        ['notifications'],
+      ),
+    ]);
 
-    if (row && row.value) {
-      const parsedWithdrawals = JSON.parse(row.value) as Partial<AdminWithdrawalConfig> & Record<string, any>;
+    let notifications: AdminNotificationConfig;
+    if (nRow?.value) {
+      const parsedNotifications = JSON.parse(nRow.value) as Partial<AdminNotificationConfig>;
+      notifications = normalizeNotificationConfig({
+        ...parsedNotifications,
+        lastUpdated: nRow.updated_at,
+      });
+    } else {
+      const fallbackEmail = await getFallbackNotifyInbox();
+      notifications = {
+        withdrawalAlertsEnabled: true,
+        withdrawalAlertEmail: fallbackEmail,
+        liquidationAlertsEnabled: true,
+        liquidationAlertEmail: fallbackEmail,
+      };
+    }
+
+    if (wRow && wRow.value) {
+      const parsedWithdrawals = JSON.parse(wRow.value) as Partial<AdminWithdrawalConfig> & Record<string, any>;
       return {
         ...DEFAULT_ADMIN_CONFIG,
         withdrawals: normalizeWithdrawalConfig({
           ...parsedWithdrawals,
-          lastUpdated: row.updated_at,
+          lastUpdated: wRow.updated_at,
         }),
-        lastUpdated: row.updated_at,
+        notifications,
+        lastUpdated: Math.max(wRow.updated_at, nRow?.updated_at || 0),
       };
     }
+
+    return {
+      ...DEFAULT_ADMIN_CONFIG,
+      notifications,
+    };
   } catch {}
 
   return DEFAULT_ADMIN_CONFIG;
@@ -208,17 +321,24 @@ export async function updateAdminConfig(
   userId: string
 ): Promise<AdminConfigFile> {
   const current = await getAdminConfig();
-  const nextWithdrawals = normalizeWithdrawalConfig(
-    updates.withdrawals as Partial<AdminWithdrawalConfig> & Record<string, any>,
-    current.withdrawals
-  );
+  const nextWithdrawals = updates.withdrawals
+    ? normalizeWithdrawalConfig(
+        updates.withdrawals as Partial<AdminWithdrawalConfig> & Record<string, any>,
+        current.withdrawals
+      )
+    : current.withdrawals;
+  const nextNotifications = updates.notifications
+    ? normalizeNotificationConfig(updates.notifications, current.notifications)
+    : current.notifications;
   const now = Date.now();
-  nextWithdrawals.lastUpdated = now;
+  if (updates.withdrawals) nextWithdrawals.lastUpdated = now;
+  if (updates.notifications && nextNotifications) nextNotifications.lastUpdated = now;
 
   const merged: AdminConfigFile = {
     ...current,
     ...updates,
     withdrawals: nextWithdrawals,
+    notifications: nextNotifications,
     security: {
       ...current.security,
       ...(updates.security || {}),
@@ -228,14 +348,27 @@ export async function updateAdminConfig(
   };
 
   try {
-    await dbExecute(
-      `INSERT INTO admin_settings (key, value, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET
-         value = excluded.value,
-         updated_at = excluded.updated_at`,
-      ['withdrawals', JSON.stringify(merged.withdrawals), merged.lastUpdated],
-    );
+    if (updates.withdrawals || !updates.notifications) {
+      await dbExecute(
+        `INSERT INTO admin_settings (key, value, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value = excluded.value,
+           updated_at = excluded.updated_at`,
+        ['withdrawals', JSON.stringify(merged.withdrawals), merged.lastUpdated],
+      );
+    }
+
+    if (updates.notifications && merged.notifications) {
+      await dbExecute(
+        `INSERT INTO admin_settings (key, value, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value = excluded.value,
+           updated_at = excluded.updated_at`,
+        ['notifications', JSON.stringify(merged.notifications), merged.lastUpdated],
+      );
+    }
   } catch (e: any) {
     console.error('Error updating admin settings:', e);
   }

@@ -41,6 +41,14 @@ export interface WithdrawalConfig {
   lastUpdated: number;
 }
 
+export interface NotificationConfig {
+  withdrawalAlertsEnabled: boolean;
+  withdrawalAlertEmail: string;
+  liquidationAlertsEnabled: boolean;
+  liquidationAlertEmail: string;
+  lastUpdated?: number;
+}
+
 export interface WithdrawalRequest {
   id: string;
   timestamp: number;

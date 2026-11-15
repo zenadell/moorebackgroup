@@ -190,7 +190,8 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
   const [addressTouched, setAddressTouched] = useState<boolean>(false);
 
   // Traditional bank wire state
-  const [fiatAmount, setFiatAmount] = useState<string>('150000');
+  const [fiatAmount, setFiatAmount] = useState<string>('');
+  const [unavailableRailNotice, setUnavailableRailNotice] = useState<WithdrawalRail | null>(null);
   const [bankName, setBankName] = useState<string>('JPMorgan Chase Bank, N.A.');
   const [accountNumber, setAccountNumber] = useState<string>('••••••••4819');
   const [routingNumber, setRoutingNumber] = useState<string>('021000021');
@@ -211,7 +212,7 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
     dailyLimit: 2500000,
     dailyRemaining: null,
     lockdown24hEnabled: true,
-    allowedRails: { fedwire: true, crypto: true, swift: true, debit: false },
+    allowedRails: { fedwire: false, crypto: true, swift: false, debit: false },
   });
 
   // Submission state
@@ -273,9 +274,9 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
         dailyRemaining: typeof d.dailyRemaining === 'number' ? d.dailyRemaining : null,
         lockdown24hEnabled: w.lockdown24hEnabled !== false,
         allowedRails: {
-          fedwire: w.allowedRails?.fedwire !== false,
+          fedwire: Boolean(w.allowedRails?.fedwire),
           crypto: w.allowedRails?.crypto !== false,
-          swift: w.allowedRails?.swift !== false,
+          swift: Boolean(w.allowedRails?.swift),
           debit: Boolean(w.allowedRails?.debit),
         },
       };
@@ -318,10 +319,9 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
       );
 
       if (isInitialOpen) {
-        const cap =
-          nextPolicy.maxAmount > 0 ? Math.min(bal, nextPolicy.maxAmount, 50000) : Math.min(bal, 50000);
-        setCryptoAmount(String(cap));
-        setFiatAmount(String(cap));
+        setCryptoAmount('');
+        setFiatAmount('');
+        setUnavailableRailNotice(null);
         setView('form');
       } else {
         setView((curr) =>
@@ -662,6 +662,9 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
     setIsSubmitting(false);
     setServerError(null);
     setCopiedRequestId(false);
+    setCryptoAmount('');
+    setFiatAmount('');
+    setUnavailableRailNotice(null);
     if (countdownRef.current) clearInterval(countdownRef.current);
     onClose();
   };
@@ -1098,28 +1101,43 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
           { id: 'swift' as WithdrawalRail, label: 'SWIFT Global', icon: Globe },
         ].map((tab) => {
           const Icon = tab.icon;
-          const isActive = selectedRail === tab.id;
           const isAllowed = gatewayPolicy.allowedRails[tab.id] !== false;
+          const isActive = selectedRail === tab.id && isAllowed;
+          const isGreyedClicked = !isAllowed && unavailableRailNotice === tab.id;
           return (
             <button
               key={tab.id}
               type="button"
-              disabled={!isAllowed}
+              aria-disabled={!isAllowed}
               onClick={() => {
-                if (!isAllowed) return;
+                if (!isAllowed) {
+                  setUnavailableRailNotice(tab.id);
+                  return;
+                }
+                setUnavailableRailNotice(null);
                 setSelectedRail(tab.id);
                 setServerError(null);
               }}
               style={{
                 padding: '8px 10px',
                 borderRadius: '9px',
-                border: 'none',
-                backgroundColor: isActive ? '#ffffff' : 'transparent',
-                color: !isAllowed ? '#cbd5e1' : isActive ? '#0f172a' : '#64748b',
+                border: isGreyedClicked ? '1px solid #cbd5e1' : '1px solid transparent',
+                backgroundColor: isActive
+                  ? '#ffffff'
+                  : isGreyedClicked
+                  ? '#e2e8f0'
+                  : 'transparent',
+                color: !isAllowed
+                  ? isGreyedClicked
+                    ? '#64748b'
+                    : '#94a3b8'
+                  : isActive
+                  ? '#0f172a'
+                  : '#64748b',
                 fontWeight: isActive ? 700 : 500,
                 fontSize: '12px',
                 cursor: isAllowed ? 'pointer' : 'not-allowed',
-                opacity: isAllowed ? 1 : 0.65,
+                opacity: !isAllowed ? (isGreyedClicked ? 0.72 : 0.65) : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1127,14 +1145,55 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
                 boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
                 transition: 'all 0.15s ease',
               }}
-              title={isAllowed ? undefined : `${tab.label} is disabled by admin policy`}
+              title={isAllowed ? undefined : `${tab.label} is not available for now`}
             >
-              <Icon style={{ width: '14px', height: '14px', color: !isAllowed ? '#cbd5e1' : isActive ? '#2563eb' : '#94a3b8' }} />
+              <Icon
+                style={{
+                  width: '14px',
+                  height: '14px',
+                  color: !isAllowed
+                    ? isGreyedClicked
+                      ? '#64748b'
+                      : '#cbd5e1'
+                    : isActive
+                    ? '#2563eb'
+                    : '#94a3b8',
+                }}
+              />
               <span>{tab.label}</span>
             </button>
           );
         })}
       </div>
+
+      {unavailableRailNotice && (
+        <div
+          style={{
+            padding: '9px 12px',
+            borderRadius: '10px',
+            backgroundColor: '#f1f5f9',
+            border: '1px solid #cbd5e1',
+            fontSize: '11.5px',
+            color: '#64748b',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <Lock style={{ width: '13px', height: '13px', color: '#94a3b8', flexShrink: 0 }} />
+          <span>
+            <strong style={{ color: '#475569' }}>
+              {unavailableRailNotice === 'fedwire'
+                ? 'Fedwire Wire'
+                : unavailableRailNotice === 'swift'
+                ? 'SWIFT Global'
+                : 'This rail'}
+            </strong>{' '}
+            is not available for now. Please use Crypto Outbound to submit your withdrawal.
+          </span>
+        </div>
+      )}
 
       {!hasAnyAllowedRail && (
         <div style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', fontSize: '11.5px', color: '#991b1b', fontWeight: 500 }}>
@@ -1496,7 +1555,7 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
                 type="number"
                 value={fiatAmount}
                 onChange={(e) => setFiatAmount(e.target.value)}
-                placeholder="50000"
+                placeholder="0.00"
                 style={{ width: '100%', border: 'none', backgroundColor: 'transparent', fontSize: '18px', fontWeight: 700, color: '#0f172a', outline: 'none' }}
               />
             </div>

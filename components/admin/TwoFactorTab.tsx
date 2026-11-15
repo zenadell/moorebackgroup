@@ -16,6 +16,7 @@ import {
 import { ModernButtonSpinner } from '@/components/ui/ModernLoader';
 import {
   DbRuntimeStatus,
+  NotificationConfig,
   OtpLog,
   StatusBanner,
   TwoFactorSettings,
@@ -43,11 +44,13 @@ interface TwoFactorTabProps {
   twoFactorStatusMsg: StatusBanner | null;
   otpLogs: OtpLog[];
   dbStatus?: DbRuntimeStatus | null;
+  notificationConfig?: NotificationConfig;
   copiedOtp: string | null;
   onSave2FA: (e: React.FormEvent) => void;
   onRemoveResendKey?: () => void;
   onRefreshOtp: () => void;
   onCopyOtp: (code: string) => void;
+  onOpenWithdrawalsTab?: () => void;
 }
 
 export function TwoFactorTab({
@@ -66,11 +69,13 @@ export function TwoFactorTab({
   twoFactorStatusMsg,
   otpLogs,
   dbStatus,
+  notificationConfig,
   copiedOtp,
   onSave2FA,
   onRemoveResendKey,
   onRefreshOtp,
   onCopyOtp,
+  onOpenWithdrawalsTab,
 }: TwoFactorTabProps) {
   const isResendActive =
     twoFactorSettings.resendStatus === 'active' ||
@@ -681,6 +686,48 @@ export function TwoFactorTab({
               </div>
             </div>
           </div>
+
+          {notificationConfig && (
+            <div
+              style={{
+                ...saloSubCard,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ fontSize: '12px', color: '#374151', lineHeight: 1.5 }}>
+                <strong style={{ color: '#111827' }}>Automated Activity Alerts:</strong>{' '}
+                Withdrawals{' '}
+                <span style={{ color: '#6b7280' }}>
+                  (
+                  {notificationConfig.withdrawalAlertsEnabled && notificationConfig.withdrawalAlertEmail
+                    ? notificationConfig.withdrawalAlertEmail
+                    : 'Paused / unset'}
+                  )
+                </span>{' '}
+                • Liquidations{' '}
+                <span style={{ color: '#6b7280' }}>
+                  (
+                  {notificationConfig.liquidationAlertsEnabled && notificationConfig.liquidationAlertEmail
+                    ? notificationConfig.liquidationAlertEmail
+                    : 'Paused / unset'}
+                  )
+                </span>
+              </div>
+              {onOpenWithdrawalsTab && (
+                <button
+                  type="button"
+                  onClick={onOpenWithdrawalsTab}
+                  style={{ ...saloSecondaryBtn, fontSize: '11.5px', padding: '5px 10px' }}
+                >
+                  Configure in Withdrawals →
+                </button>
+              )}
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button type="submit" disabled={isSaving2FA} style={saloPrimaryBtn}>

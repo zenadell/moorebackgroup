@@ -352,7 +352,7 @@ async function seedEmptyTables(client: DbClient) {
     let initialWithdrawals: Record<string, any> = {
       minAmount: 10,
       maxAmount: 5000000,
-      allowedRails: { fedwire: true, crypto: true, swift: true, debit: false },
+      allowedRails: { fedwire: false, crypto: true, swift: false, debit: false },
       requireTwoFactor: true,
       dailyLimit: 2500000,
       lockdown24hEnabled: true,

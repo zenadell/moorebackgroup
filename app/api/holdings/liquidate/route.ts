@@ -6,6 +6,7 @@ import {
   getLiquidatedPositions,
   getShareBuybacks,
 } from '@/lib/admin/service';
+import { sendAdminLiquidationNotificationEmail } from '@/lib/email/service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -71,6 +72,12 @@ export async function POST(req: NextRequest) {
       getHoldingShareAdjustments(),
       getShareBuybacks(),
     ]);
+
+    try {
+      await sendAdminLiquidationNotificationEmail(record, newBalance);
+    } catch (emailErr) {
+      console.error('[LIQUIDATION_ADMIN_ALERT] Email dispatch error:', emailErr);
+    }
 
     return NextResponse.json({
       success: true,

@@ -20,6 +20,7 @@ import {
   AdminTabId,
   BeneficiaryInfo,
   DbRuntimeStatus,
+  NotificationConfig,
   OtpLog,
   PrincipalProfile,
   SessionItem,
@@ -153,9 +154,9 @@ export default function SaloAdminPortal() {
     maxAmount: 5000000,
     dailyLimit: 2500000,
     allowedRails: {
-      fedwire: true,
+      fedwire: false,
       crypto: true,
-      swift: true,
+      swift: false,
       debit: false,
     },
     requireTwoFactor: true,
@@ -169,6 +170,15 @@ export default function SaloAdminPortal() {
     declineButtonText: 'Contact Support',
     lastUpdated: 0,
   });
+  const [notificationConfig, setNotificationConfig] = useState<NotificationConfig>({
+    withdrawalAlertsEnabled: true,
+    withdrawalAlertEmail: 'declansalo1@gmail.com',
+    liquidationAlertsEnabled: true,
+    liquidationAlertEmail: 'declansalo1@gmail.com',
+  });
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [testingAlertKind, setTestingAlertKind] = useState<'withdrawal' | 'liquidation' | null>(null);
+  const [notificationStatusMsg, setNotificationStatusMsg] = useState<StatusBanner | null>(null);
   const [isSavingWithdrawals, setIsSavingWithdrawals] = useState(false);
   const [isClearingCooldown, setIsClearingCooldown] = useState(false);
   const [withdrawalStatusMsg, setWithdrawalStatusMsg] = useState<StatusBanner | null>(null);
@@ -281,6 +291,12 @@ export default function SaloAdminPortal() {
             ...(w.allowedRails || {}),
           },
           lastUpdated: w.lastUpdated || data.config.lastUpdated || Date.now(),
+        }));
+      }
+      if (data.success && data.config?.notifications) {
+        setNotificationConfig((prev) => ({
+          ...prev,
+          ...data.config.notifications,
         }));
       }
     } catch {}
@@ -627,6 +643,77 @@ export default function SaloAdminPortal() {
   const handleSaveWithdrawals = async (e: React.FormEvent) => {
     e.preventDefault();
     await persistWithdrawalConfig(withdrawalConfig);
+  };
+
+  const handleSaveNotifications = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingNotifications(true);
+    setNotificationStatusMsg(null);
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-salo-key': masterKey },
+        body: JSON.stringify({ notifications: notificationConfig }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.config?.notifications) {
+          setNotificationConfig((prev) => ({ ...prev, ...data.config.notifications }));
+        }
+        setNotificationStatusMsg({
+          type: 'success',
+          message: 'Withdrawal & liquidation alert email settings saved.',
+        });
+      } else {
+        setNotificationStatusMsg({
+          type: 'error',
+          message: data.error || 'Failed to save alert email settings.',
+        });
+      }
+    } catch {
+      setNotificationStatusMsg({
+        type: 'error',
+        message: 'Network error saving alert email settings.',
+      });
+    } finally {
+      setIsSavingNotifications(false);
+    }
+  };
+
+  const handleSendTestAlert = async (kind: 'withdrawal' | 'liquidation') => {
+    setTestingAlertKind(kind);
+    setNotificationStatusMsg(null);
+    const targetEmail =
+      kind === 'withdrawal'
+        ? notificationConfig.withdrawalAlertEmail
+        : notificationConfig.liquidationAlertEmail;
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-salo-key': masterKey },
+        body: JSON.stringify({ testAlert: { kind, email: targetEmail } }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotificationStatusMsg({
+          type: 'success',
+          message: data.message || `Test ${kind} alert dispatched successfully.`,
+        });
+        await loadEmailStudio(masterKey);
+      } else {
+        setNotificationStatusMsg({
+          type: 'error',
+          message: data.error || `Failed to dispatch test ${kind} alert.`,
+        });
+      }
+    } catch {
+      setNotificationStatusMsg({
+        type: 'error',
+        message: 'Network error sending test alert email.',
+      });
+    } finally {
+      setTestingAlertKind(null);
+    }
   };
 
   const handleClearLockdownCooldown = async () => {
@@ -1181,11 +1268,18 @@ export default function SaloAdminPortal() {
             <WithdrawalsTab
               withdrawalConfig={withdrawalConfig}
               setWithdrawalConfig={setWithdrawalConfig}
+              notificationConfig={notificationConfig}
+              setNotificationConfig={setNotificationConfig}
               withdrawalRequests={withdrawalRequests}
               isSavingWithdrawals={isSavingWithdrawals}
+              isSavingNotifications={isSavingNotifications}
+              testingAlertKind={testingAlertKind}
               isClearingCooldown={isClearingCooldown}
               withdrawalStatusMsg={withdrawalStatusMsg}
+              notificationStatusMsg={notificationStatusMsg}
               onSaveWithdrawals={handleSaveWithdrawals}
+              onSaveNotifications={handleSaveNotifications}
+              onSendTestAlert={handleSendTestAlert}
               onQuickPersistConfig={persistWithdrawalConfig}
               onClearLockdownCooldown={handleClearLockdownCooldown}
               onRefreshQueue={() => loadWithdrawalRequests(masterKey)}
@@ -1243,6 +1337,7 @@ export default function SaloAdminPortal() {
               twoFactorStatusMsg={twoFactorStatusMsg}
               otpLogs={otpLogs}
               dbStatus={dbStatus}
+              notificationConfig={notificationConfig}
               copiedOtp={copiedOtp}
               onSave2FA={handleSave2FA}
               onRemoveResendKey={handleRemoveResendKey}
@@ -1252,6 +1347,7 @@ export default function SaloAdminPortal() {
                 setCopiedOtp(code);
                 setTimeout(() => setCopiedOtp(null), 1800);
               }}
+              onOpenWithdrawalsTab={() => setActiveTab('withdrawals')}
             />
           )}
 
