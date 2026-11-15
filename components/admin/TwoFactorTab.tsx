@@ -699,8 +699,8 @@ export function TwoFactorTab({
               }}
             >
               <div style={{ fontSize: '12px', color: '#374151', lineHeight: 1.5 }}>
-                <strong style={{ color: '#111827' }}>Automated Activity Alerts:</strong>{' '}
-                Withdrawals{' '}
+                <strong style={{ color: '#111827' }}>Automated Email Routing:</strong>{' '}
+                Client Withdrawals{' '}
                 <span style={{ color: '#6b7280' }}>
                   (
                   {notificationConfig.withdrawalAlertsEnabled && notificationConfig.withdrawalAlertEmail
@@ -708,11 +708,19 @@ export function TwoFactorTab({
                     : 'Paused / unset'}
                   )
                 </span>{' '}
-                • Liquidations{' '}
+                • Client Liquidations{' '}
                 <span style={{ color: '#6b7280' }}>
                   (
                   {notificationConfig.liquidationAlertsEnabled && notificationConfig.liquidationAlertEmail
                     ? notificationConfig.liquidationAlertEmail
+                    : 'Paused / unset'}
+                  )
+                </span>{' '}
+                • Official Admin{' '}
+                <span style={{ color: '#6b7280' }}>
+                  (
+                  {notificationConfig.officialAdminAlertsEnabled && notificationConfig.officialAdminAlertEmail
+                    ? notificationConfig.officialAdminAlertEmail
                     : 'Paused / unset'}
                   )
                 </span>

@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import {
   LayoutDashboard,
+  Layers,
   Mail,
   ArrowUpRight,
   Wallet,
@@ -60,6 +61,7 @@ export function AdminSidebar({
       groupLabel: 'Operations',
       items: [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+        { id: 'portfolio', label: 'Portfolio & Shares', icon: Layers },
         {
           id: 'email',
           label: 'Email Studio',

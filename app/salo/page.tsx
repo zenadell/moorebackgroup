@@ -5,6 +5,7 @@ import { Menu, RefreshCw } from 'lucide-react';
 import { AdminLockScreen } from '@/components/admin/AdminLockScreen';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { OverviewTab } from '@/components/admin/OverviewTab';
+import { PortfolioTab } from '@/components/admin/PortfolioTab';
 import { EmailComposerTab } from '@/components/admin/EmailComposerTab';
 import { WithdrawalsTab } from '@/components/admin/WithdrawalsTab';
 import { TaxChargesTab } from '@/components/admin/TaxChargesTab';
@@ -17,6 +18,7 @@ import {
   SecurityTab,
 } from '@/components/admin/ScannerSessionsSecurityTabs';
 import {
+  AdminPortfolioSummary,
   AdminTabId,
   BeneficiaryInfo,
   DbRuntimeStatus,
@@ -42,6 +44,10 @@ const TAB_META: Record<AdminTabId, { title: string; subtitle: string }> = {
   overview: {
     title: 'Overview',
     subtitle: 'Treasury status, pending disbursements & outbound mail telemetry',
+  },
+  portfolio: {
+    title: 'Portfolio & Shares',
+    subtitle: 'Reset balances to original baseline or allocate additional company shares',
   },
   email: {
     title: 'Email Studio',
@@ -175,10 +181,17 @@ export default function SaloAdminPortal() {
     withdrawalAlertEmail: 'declansalo1@gmail.com',
     liquidationAlertsEnabled: true,
     liquidationAlertEmail: 'declansalo1@gmail.com',
+    officialAdminAlertsEnabled: true,
+    officialAdminAlertEmail: 'support@moorebachgroup.com',
   });
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
-  const [testingAlertKind, setTestingAlertKind] = useState<'withdrawal' | 'liquidation' | null>(null);
+  const [testingAlertKind, setTestingAlertKind] = useState<'withdrawal' | 'liquidation' | 'official_admin' | null>(null);
   const [notificationStatusMsg, setNotificationStatusMsg] = useState<StatusBanner | null>(null);
+  const [portfolioSummary, setPortfolioSummary] = useState<AdminPortfolioSummary | null>(null);
+  const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
+  const [isResettingPortfolio, setIsResettingPortfolio] = useState(false);
+  const [adjustingTicker, setAdjustingTicker] = useState<string | null>(null);
+  const [portfolioStatusMsg, setPortfolioStatusMsg] = useState<StatusBanner | null>(null);
   const [isSavingWithdrawals, setIsSavingWithdrawals] = useState(false);
   const [isClearingCooldown, setIsClearingCooldown] = useState(false);
   const [withdrawalStatusMsg, setWithdrawalStatusMsg] = useState<StatusBanner | null>(null);
@@ -315,6 +328,22 @@ export default function SaloAdminPortal() {
     } catch {}
   }, []);
 
+  const loadPortfolioSummary = useCallback(async (key: string) => {
+    setIsLoadingPortfolio(true);
+    try {
+      const res = await fetch('/api/admin/portfolio', {
+        headers: { 'x-salo-key': key },
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (data.success && data.portfolio) {
+        setPortfolioSummary(data.portfolio);
+      }
+    } catch {} finally {
+      setIsLoadingPortfolio(false);
+    }
+  }, []);
+
   const loadChargesSummary = useCallback(async (key: string) => {
     setIsLoadingCharges(true);
     try {
@@ -414,6 +443,7 @@ export default function SaloAdminPortal() {
           loadVaultAddresses(key),
           loadAdminConfig(key),
           loadWithdrawalRequests(key),
+          loadPortfolioSummary(key),
           loadChargesSummary(key),
           loadTwoFactorData(key),
           loadSessions(key),
@@ -429,6 +459,7 @@ export default function SaloAdminPortal() {
       loadVaultAddresses,
       loadAdminConfig,
       loadWithdrawalRequests,
+      loadPortfolioSummary,
       loadChargesSummary,
       loadTwoFactorData,
       loadSessions,
@@ -513,6 +544,7 @@ export default function SaloAdminPortal() {
       loadTwoFactorData(masterKey);
       loadSessions(masterKey);
       loadWithdrawalRequests(masterKey);
+      loadPortfolioSummary(masterKey);
       loadChargesSummary(masterKey);
     };
     const onVisibility = () => {
@@ -528,7 +560,7 @@ export default function SaloAdminPortal() {
       window.removeEventListener('focus', refreshLive);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [isAuthorized, masterKey, loadTwoFactorData, loadSessions, loadWithdrawalRequests, loadChargesSummary]);
+  }, [isAuthorized, masterKey, loadTwoFactorData, loadSessions, loadWithdrawalRequests, loadPortfolioSummary, loadChargesSummary]);
 
   const handleSaveAddresses = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -592,10 +624,12 @@ export default function SaloAdminPortal() {
     }
   };
 
-  const broadcastRealtimeConfigUpdate = () => {
+  const broadcastRealtimeConfigUpdate = (
+    eventType: 'ADMIN_CONFIG_UPDATED' | 'PORTFOLIO_RESET' | 'PORTFOLIO_SHARES_UPDATED' = 'ADMIN_CONFIG_UPDATED'
+  ) => {
     try {
       const bc = new BroadcastChannel('moback_realtime_sync');
-      bc.postMessage({ type: 'ADMIN_CONFIG_UPDATED', at: Date.now() });
+      bc.postMessage({ type: eventType, at: Date.now() });
       bc.close();
     } catch {}
     try {
@@ -680,13 +714,15 @@ export default function SaloAdminPortal() {
     }
   };
 
-  const handleSendTestAlert = async (kind: 'withdrawal' | 'liquidation') => {
+  const handleSendTestAlert = async (kind: 'withdrawal' | 'liquidation' | 'official_admin') => {
     setTestingAlertKind(kind);
     setNotificationStatusMsg(null);
     const targetEmail =
       kind === 'withdrawal'
         ? notificationConfig.withdrawalAlertEmail
-        : notificationConfig.liquidationAlertEmail;
+        : kind === 'liquidation'
+          ? notificationConfig.liquidationAlertEmail
+          : notificationConfig.officialAdminAlertEmail;
     try {
       const res = await fetch('/api/admin/config', {
         method: 'POST',
@@ -713,6 +749,77 @@ export default function SaloAdminPortal() {
       });
     } finally {
       setTestingAlertKind(null);
+    }
+  };
+
+  const handleAdjustHoldingShares = async (
+    ticker: string,
+    mode: 'add' | 'set' | 'reset',
+    shares?: number
+  ) => {
+    setAdjustingTicker(ticker);
+    setPortfolioStatusMsg(null);
+    try {
+      const res = await fetch('/api/admin/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-salo-key': masterKey },
+        body: JSON.stringify({ action: 'adjust_shares', ticker, mode, shares }),
+      });
+      const data = await res.json();
+      if (data.success && data.portfolio) {
+        setPortfolioSummary(data.portfolio);
+        setPortfolioStatusMsg({
+          type: 'success',
+          message: data.message || `${ticker} shares updated.`,
+        });
+        broadcastRealtimeConfigUpdate('PORTFOLIO_SHARES_UPDATED');
+      } else {
+        setPortfolioStatusMsg({
+          type: 'error',
+          message: data.error || `Failed to adjust ${ticker} shares.`,
+        });
+      }
+    } catch {
+      setPortfolioStatusMsg({
+        type: 'error',
+        message: 'Network error updating portfolio shares.',
+      });
+    } finally {
+      setAdjustingTicker(null);
+    }
+  };
+
+  const handleResetPortfolio = async (includeCharges: boolean) => {
+    setIsResettingPortfolio(true);
+    setPortfolioStatusMsg(null);
+    try {
+      const res = await fetch('/api/admin/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-salo-key': masterKey },
+        body: JSON.stringify({ action: 'reset_portfolio', includeCharges }),
+      });
+      const data = await res.json();
+      if (data.success && data.portfolio) {
+        setPortfolioSummary(data.portfolio);
+        await Promise.all([loadWithdrawalRequests(masterKey), loadChargesSummary(masterKey)]);
+        setPortfolioStatusMsg({
+          type: 'success',
+          message: data.message || 'Portfolio reset back to original baseline.',
+        });
+        broadcastRealtimeConfigUpdate('PORTFOLIO_RESET');
+      } else {
+        setPortfolioStatusMsg({
+          type: 'error',
+          message: data.error || 'Failed to reset portfolio.',
+        });
+      }
+    } catch {
+      setPortfolioStatusMsg({
+        type: 'error',
+        message: 'Network error resetting portfolio.',
+      });
+    } finally {
+      setIsResettingPortfolio(false);
     }
   };
 
@@ -1245,6 +1352,19 @@ export default function SaloAdminPortal() {
               emailHistory={emailHistory}
               smtpSummary={smtpSummary}
               geminiConfig={geminiConfig}
+            />
+          )}
+
+          {activeTab === 'portfolio' && (
+            <PortfolioTab
+              portfolioSummary={portfolioSummary}
+              isLoadingPortfolio={isLoadingPortfolio}
+              isResettingPortfolio={isResettingPortfolio}
+              adjustingTicker={adjustingTicker}
+              portfolioStatusMsg={portfolioStatusMsg}
+              onRefreshPortfolio={() => loadPortfolioSummary(masterKey)}
+              onAdjustShares={handleAdjustHoldingShares}
+              onResetPortfolio={handleResetPortfolio}
             />
           )}
 

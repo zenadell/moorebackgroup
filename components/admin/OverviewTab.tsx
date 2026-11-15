@@ -5,6 +5,7 @@ import {
   Mail,
   ArrowUpRight,
   KeyRound,
+  Layers,
   MonitorSmartphone,
   CheckCircle2,
   Lock,
@@ -87,6 +88,10 @@ export function OverviewTab({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => onSelectTab('portfolio')} style={saloSecondaryBtn}>
+            <Layers style={{ width: '13px', height: '13px' }} />
+            <span>Reset / Add Shares</span>
+          </button>
           <button type="button" onClick={() => onSelectTab('withdrawals')} style={saloSecondaryBtn}>
             <ArrowUpRight style={{ width: '13px', height: '13px' }} />
             <span>Withdrawals ({pendingWithdrawals.length})</span>

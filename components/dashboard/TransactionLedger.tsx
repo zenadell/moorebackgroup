@@ -62,7 +62,37 @@ export function TransactionLedger({ className }: TransactionLedgerProps) {
   useEffect(() => {
     fetchTransactions();
     const interval = setInterval(() => fetchTransactions(), 8000);
-    return () => clearInterval(interval);
+
+    let bc: BroadcastChannel | null = null;
+    const relevantTypes = new Set([
+      'PAYMENT_TRANSFERRED',
+      'LIQUIDATION_SUCCESS',
+      'BUYBACK_SUCCESS',
+      'PORTFOLIO_RESET',
+      'PORTFOLIO_SHARES_UPDATED',
+      'ADMIN_CONFIG_UPDATED',
+    ]);
+    try {
+      bc = new BroadcastChannel('moback_realtime_sync');
+      bc.onmessage = (event) => {
+        if (relevantTypes.has(event.data?.type)) {
+          fetchTransactions();
+        }
+      };
+    } catch {}
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'moback_realtime_ping' || e.key === 'moback_last_transfer') {
+        fetchTransactions();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      clearInterval(interval);
+      bc?.close();
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   const handleCopy = (txId: string, id: string) => {

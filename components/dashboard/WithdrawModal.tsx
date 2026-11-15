@@ -1453,7 +1453,7 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
             )}
           </div>
 
-          {/* Amount Input with MAX button */}
+          {/* Amount Input */}
           <div
             style={{
               backgroundColor: '#f8fafc',
@@ -1469,22 +1469,6 @@ export function WithdrawModal({ isOpen, onClose }: WithdrawModalProps) {
               <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>
                 Withdrawal Amount ({cryptoAsset})
               </span>
-              <button
-                type="button"
-                onClick={() => setCryptoAmount(String(liquidatedBalance))}
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: '5px',
-                  border: '1px solid #2563eb',
-                  backgroundColor: '#eff6ff',
-                  color: '#2563eb',
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                MAX
-              </button>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

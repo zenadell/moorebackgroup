@@ -34,13 +34,13 @@ interface WithdrawalsTabProps {
   withdrawalRequests: WithdrawalRequest[];
   isSavingWithdrawals: boolean;
   isSavingNotifications: boolean;
-  testingAlertKind: 'withdrawal' | 'liquidation' | null;
+  testingAlertKind: 'withdrawal' | 'liquidation' | 'official_admin' | null;
   isClearingCooldown: boolean;
   withdrawalStatusMsg: StatusBanner | null;
   notificationStatusMsg: StatusBanner | null;
   onSaveWithdrawals: (e: React.FormEvent) => void;
   onSaveNotifications: (e: React.FormEvent) => void;
-  onSendTestAlert: (kind: 'withdrawal' | 'liquidation') => Promise<void>;
+  onSendTestAlert: (kind: 'withdrawal' | 'liquidation' | 'official_admin') => Promise<void>;
   onQuickPersistConfig: (nextConfig: WithdrawalConfig, msg?: string) => Promise<void>;
   onClearLockdownCooldown: () => void;
   onRefreshQueue: () => void;
@@ -595,7 +595,7 @@ export function WithdrawalsTab({
             </h2>
           </div>
           <p style={{ fontSize: '12.5px', color: '#6b7280', margin: 0 }}>
-            Choose which inbox receives instant email notifications whenever a user submits a withdrawal or liquidates shares.
+            Route client-facing confirmations to the user&apos;s inbox and internal treasury operations alerts separately to your official admin email.
           </p>
         </div>
 
@@ -630,10 +630,10 @@ export function WithdrawalsTab({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
                 <div>
                   <strong style={{ fontSize: '13px', color: '#111827', display: 'block' }}>
-                    Withdrawal Request Alerts
+                    Client Withdrawal Confirmation
                   </strong>
                   <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
-                    Fires automatically when a withdrawal is submitted.
+                    Sent to the client when they submit a withdrawal (&quot;Dear Declan Salo,&quot;).
                   </span>
                 </div>
                 <button
@@ -659,7 +659,7 @@ export function WithdrawalsTab({
                   {notificationConfig.withdrawalAlertsEnabled ? 'Active' : 'Muted'}
                 </button>
               </div>
-              <label style={saloLabel}>Recipient Email(s) for Withdrawals</label>
+              <label style={saloLabel}>User Email(s) for Withdrawals</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
@@ -670,7 +670,7 @@ export function WithdrawalsTab({
                       withdrawalAlertEmail: e.target.value,
                     })
                   }
-                  placeholder="alerts@yourdomain.com (comma-separated allowed)"
+                  placeholder="client@example.com (comma-separated allowed)"
                   style={saloInput}
                 />
                 <button
@@ -695,10 +695,10 @@ export function WithdrawalsTab({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
                 <div>
                   <strong style={{ fontSize: '13px', color: '#111827', display: 'block' }}>
-                    Share Liquidation Alerts
+                    Client Liquidation Confirmation
                   </strong>
                   <span style={{ fontSize: '11.5px', color: '#6b7280' }}>
-                    Fires automatically when shares are liquidated to cash.
+                    Sent to the client when shares are liquidated (&quot;Dear Declan Salo,&quot;).
                   </span>
                 </div>
                 <button
@@ -725,7 +725,7 @@ export function WithdrawalsTab({
                 </button>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                <label style={{ ...saloLabel, marginBottom: 0 }}>Recipient Email(s) for Liquidations</label>
+                <label style={{ ...saloLabel, marginBottom: 0 }}>User Email(s) for Liquidations</label>
                 {notificationConfig.withdrawalAlertEmail.trim() &&
                   notificationConfig.liquidationAlertEmail !== notificationConfig.withdrawalAlertEmail && (
                     <button
@@ -760,7 +760,7 @@ export function WithdrawalsTab({
                       liquidationAlertEmail: e.target.value,
                     })
                   }
-                  placeholder="alerts@yourdomain.com (comma-separated allowed)"
+                  placeholder="client@example.com (comma-separated allowed)"
                   style={saloInput}
                 />
                 <button
@@ -779,6 +779,77 @@ export function WithdrawalsTab({
                   {testingAlertKind === 'liquidation' ? 'Sending...' : 'Test'}
                 </button>
               </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...saloSubCard,
+              borderColor: '#fde68a',
+              backgroundColor: '#fffbeb',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+              <div>
+                <strong style={{ fontSize: '13px', color: '#78350f', display: 'block' }}>
+                  Official Admin Operations Alert (Internal Audit)
+                </strong>
+                <span style={{ fontSize: '11.5px', color: '#92400e' }}>
+                  Sends full treasury telemetry, origin IP/device, and Admin Console links to your official desk inbox whenever a withdrawal or liquidation occurs.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setNotificationConfig({
+                    ...notificationConfig,
+                    officialAdminAlertsEnabled: !notificationConfig.officialAdminAlertsEnabled,
+                  })
+                }
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  border: '1px solid',
+                  cursor: 'pointer',
+                  backgroundColor: notificationConfig.officialAdminAlertsEnabled ? '#ecfdf5' : '#f3f4f6',
+                  borderColor: notificationConfig.officialAdminAlertsEnabled ? '#a7f3d0' : '#d1d5db',
+                  color: notificationConfig.officialAdminAlertsEnabled ? '#065f46' : '#4b5563',
+                }}
+              >
+                {notificationConfig.officialAdminAlertsEnabled ? 'Active' : 'Muted'}
+              </button>
+            </div>
+            <label style={{ ...saloLabel, color: '#78350f' }}>Official Admin Email(s)</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                value={notificationConfig.officialAdminAlertEmail}
+                onChange={(e) =>
+                  setNotificationConfig({
+                    ...notificationConfig,
+                    officialAdminAlertEmail: e.target.value,
+                  })
+                }
+                placeholder="support@moorebachgroup.com (comma-separated allowed)"
+                style={saloInput}
+              />
+              <button
+                type="button"
+                disabled={testingAlertKind !== null || !notificationConfig.officialAdminAlertEmail.trim()}
+                onClick={() => onSendTestAlert('official_admin')}
+                style={{
+                  ...saloSecondaryBtn,
+                  whiteSpace: 'nowrap',
+                  opacity:
+                    testingAlertKind !== null || !notificationConfig.officialAdminAlertEmail.trim()
+                      ? 0.6
+                      : 1,
+                }}
+              >
+                {testingAlertKind === 'official_admin' ? 'Sending...' : 'Test'}
+              </button>
             </div>
           </div>
 

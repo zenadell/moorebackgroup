@@ -424,12 +424,64 @@ function formatAdminUsd(amount: number): string {
   })}`;
 }
 
+function formatAlertTimestamp(ts?: number): string {
+  return new Date(ts || Date.now()).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short',
+  });
+}
+
+async function dispatchClientAndAdminAlert(params: {
+  clientEnabled: boolean;
+  clientRecipientsRaw: string;
+  clientEventLabel: string;
+  clientInput: Omit<ComposedEmailInput, 'to'>;
+  adminEnabled: boolean;
+  adminRecipientsRaw: string;
+  adminEventLabel: string;
+  adminInput: Omit<ComposedEmailInput, 'to'>;
+}): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
+  const [clientRes, adminRes] = await Promise.all([
+    dispatchConfiguredAdminAlert({
+      enabled: params.clientEnabled,
+      configuredRecipientsRaw: params.clientRecipientsRaw,
+      eventLabel: params.clientEventLabel,
+      input: params.clientInput,
+    }),
+    dispatchConfiguredAdminAlert({
+      enabled: params.adminEnabled,
+      configuredRecipientsRaw: params.adminRecipientsRaw,
+      eventLabel: params.adminEventLabel,
+      input: params.adminInput,
+    }),
+  ]);
+
+  const combinedRecipients = Array.from(
+    new Set([
+      ...(clientRes.dispatched ? clientRes.recipients : []),
+      ...(adminRes.dispatched ? adminRes.recipients : []),
+    ])
+  );
+
+  return {
+    dispatched: clientRes.dispatched || adminRes.dispatched,
+    recipients: combinedRecipients,
+    error: clientRes.error || adminRes.error,
+  };
+}
+
 export async function sendAdminWithdrawalNotificationEmail(
   record: WithdrawalRequestRecord,
   remainingBalance?: number
 ): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
   const config = await getAdminConfig();
   const notif = config.notifications;
+  const beneficiaryName = (record.beneficiary || 'Declan Salo').trim();
   const railLabel =
     record.rail === 'crypto'
       ? `Crypto Outbound (${record.asset || 'USDT'} / ${record.network || 'TRC20'})`
@@ -439,44 +491,77 @@ export async function sendAdminWithdrawalNotificationEmail(
           ? 'SWIFT Global'
           : record.rail;
 
-  const when = new Date(record.timestamp || Date.now()).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short',
-  });
+  const when = formatAlertTimestamp(record.timestamp);
+  const destinationDisplay = record.walletAddress || record.destination;
+  const clientInboxSummary =
+    notif?.withdrawalAlertsEnabled && notif?.withdrawalAlertEmail
+      ? notif.withdrawalAlertEmail
+      : 'Not sent (paused/unset)';
 
-  return dispatchConfiguredAdminAlert({
-    enabled: Boolean(notif?.withdrawalAlertsEnabled),
-    configuredRecipientsRaw: notif?.withdrawalAlertEmail || '',
-    eventLabel: 'Withdrawal Alert',
-    input: {
+  return dispatchClientAndAdminAlert({
+    clientEnabled: Boolean(notif?.withdrawalAlertsEnabled),
+    clientRecipientsRaw: notif?.withdrawalAlertEmail || '',
+    clientEventLabel: 'Client Withdrawal Confirmation',
+    clientInput: {
+      senderName: 'MooreBach Group Client Services',
+      senderRole: 'Portfolio Custody & Treasury Operations',
+      subject: `Withdrawal Request Received: ${formatAdminUsd(record.amount)} (${railLabel})`,
+      preheader: `Your withdrawal request (${record.id}) for ${formatAdminUsd(record.amount)} has been queued for processing.`,
+      templateId: 'withdrawal_advisory',
+      classification: 'CLIENT TRANSACTION CONFIRMATION',
+      tone: 'navy',
+      headline: 'Withdrawal Request Received',
+      greeting: `Dear ${beneficiaryName},`,
+      bodyText:
+        `We have received your withdrawal request from your MooreBach Group Portfolio (#MO-88429). ` +
+        `Your request is currently queued for standard treasury clearance and settlement.\n\n` +
+        `If you did not initiate this request, please contact MooreBach Client Support immediately at support@moorebachgroup.com.`,
+      summaryTitle: 'Your Withdrawal Summary',
+      summaryRows: [
+        { label: 'Reference ID', value: record.id },
+        { label: 'Portfolio Account', value: `${beneficiaryName} (#MO-88429)` },
+        { label: 'Withdrawal Amount', value: `${formatAdminUsd(record.amount)} USD`, highlight: true },
+        { label: 'Settlement Method', value: railLabel },
+        { label: 'Destination', value: destinationDisplay },
+        ...(typeof remainingBalance === 'number'
+          ? [{ label: 'Remaining Liquid Balance', value: `${formatAdminUsd(remainingBalance)} USDT` }]
+          : []),
+        { label: 'Status', value: 'Pending Clearance' },
+        { label: 'Submitted', value: when },
+      ],
+      ctaLabel: 'View Portfolio Dashboard',
+      ctaUrl: 'https://dashboard.moorebachgroup.com',
+      signOff: 'MooreBach Group • Client Custody Services',
+      referenceCode: record.id,
+    },
+    adminEnabled: Boolean(notif?.officialAdminAlertsEnabled),
+    adminRecipientsRaw: notif?.officialAdminAlertEmail || '',
+    adminEventLabel: 'Official Admin Withdrawal Alert',
+    adminInput: {
       senderName: 'MooreBach Treasury Monitor',
-      senderRole: 'Automated Capital Disbursement Desk',
-      subject: `Withdrawal Alert: ${formatAdminUsd(record.amount)} (${record.rail.toUpperCase()}) — ${record.beneficiary}`,
-      preheader: `New withdrawal request ${record.id} for ${formatAdminUsd(record.amount)} submitted.`,
+      senderRole: 'Automated Internal Operations Alert',
+      subject: `[Admin Alert] Withdrawal Request: ${formatAdminUsd(record.amount)} (${record.rail.toUpperCase()}) — ${beneficiaryName}`,
+      preheader: `Client withdrawal request ${record.id} for ${formatAdminUsd(record.amount)} submitted.`,
       templateId: 'security_alert',
-      classification: 'AUTOMATED WITHDRAWAL ALERT',
+      classification: 'OFFICIAL ADMIN ALERT',
       tone: 'amber',
-      headline: 'New Withdrawal Request Submitted',
+      headline: 'New Client Withdrawal Request Submitted',
       greeting: 'Treasury Administrator,',
       bodyText:
-        `A client withdrawal request has just been submitted on MooreBach Group Portfolio #MO-88429 and queued for administrative clearance.\n\n` +
-        `Review and confirm disbursement inside the Admin Terminal (/salo → Withdrawals).`,
-      summaryTitle: 'Withdrawal Request Details',
+        `A client withdrawal request was just submitted on MooreBach Group Portfolio #MO-88429 and awaits administrative clearance.\n\n` +
+        `Review origin telemetry and authorize or decline the disbursement inside the Admin Terminal (/salo → Withdrawals).`,
+      summaryTitle: 'Internal Withdrawal Telemetry',
       summaryRows: [
         { label: 'Request ID', value: record.id },
-        { label: 'Account Holder', value: `${record.beneficiary || 'Declan Salo'} (#MO-88429)` },
+        { label: 'Account Holder', value: `${beneficiaryName} (#MO-88429)` },
         { label: 'Withdrawal Amount', value: `${formatAdminUsd(record.amount)} USD`, highlight: true },
         { label: 'Settlement Rail', value: railLabel },
-        { label: 'Destination', value: record.walletAddress || record.destination },
+        { label: 'Destination', value: destinationDisplay },
         ...(typeof remainingBalance === 'number'
           ? [{ label: 'Remaining Liquid Cash', value: formatAdminUsd(remainingBalance) }]
           : []),
         { label: 'Origin IP / Device', value: `${record.ipAddress || 'Unknown'} • ${record.deviceName || 'Web'}` },
+        { label: 'Client Confirmation Sent To', value: clientInboxSummary },
         { label: 'Timestamp', value: when },
         { label: 'Queue Status', value: (record.status || 'pending').toUpperCase() },
       ],
@@ -494,47 +579,85 @@ export async function sendAdminLiquidationNotificationEmail(
 ): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
   const config = await getAdminConfig();
   const notif = config.notifications;
-
-  const when = new Date(record.timestamp || Date.now()).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short',
+  const sharesFmt = record.sharesLiquidated.toLocaleString('en-US', {
+    maximumFractionDigits: 4,
   });
+  const when = formatAlertTimestamp(record.timestamp);
+  const clientInboxSummary =
+    notif?.liquidationAlertsEnabled && notif?.liquidationAlertEmail
+      ? notif.liquidationAlertEmail
+      : 'Not sent (paused/unset)';
 
-  return dispatchConfiguredAdminAlert({
-    enabled: Boolean(notif?.liquidationAlertsEnabled),
-    configuredRecipientsRaw: notif?.liquidationAlertEmail || '',
-    eventLabel: 'Liquidation Alert',
-    input: {
-      senderName: 'MooreBach Equity Execution Desk',
-      senderRole: 'Automated Liquidation Monitor',
-      subject: `Liquidation Alert: ${record.sharesLiquidated.toLocaleString('en-US', { maximumFractionDigits: 4 })} ${record.ticker} (${formatAdminUsd(record.payoutAmount)})`,
-      preheader: `${record.sharesLiquidated} shares of ${record.ticker} liquidated for ${formatAdminUsd(record.payoutAmount)}.`,
+  return dispatchClientAndAdminAlert({
+    clientEnabled: Boolean(notif?.liquidationAlertsEnabled),
+    clientRecipientsRaw: notif?.liquidationAlertEmail || '',
+    clientEventLabel: 'Client Liquidation Confirmation',
+    clientInput: {
+      senderName: 'MooreBach Group Client Services',
+      senderRole: 'Portfolio Custody & Execution Desk',
+      subject: `Liquidation Confirmed: ${sharesFmt} ${record.ticker} Shares (${formatAdminUsd(record.payoutAmount)})`,
+      preheader: `Your sale of ${sharesFmt} shares of ${record.ticker} settled for ${formatAdminUsd(record.payoutAmount)}.`,
       templateId: 'withdrawal_advisory',
-      classification: 'AUTOMATED LIQUIDATION ALERT',
+      classification: 'CLIENT EXECUTION CONFIRMATION',
       tone: 'navy',
-      headline: 'Equity Share Liquidation Executed',
-      greeting: 'Treasury Administrator,',
+      headline: 'Equity Share Liquidation Confirmed',
+      greeting: 'Dear Declan Salo,',
       bodyText:
-        `Shares were just liquidated from Managed Equities (#MO-88429) into Liquid Reserves.\n\n` +
-        `Full execution details are recorded below and available inside the Admin Control Center.`,
+        `Your order to liquidate equity shares from your MooreBach Group Portfolio (#MO-88429) has been executed and credited directly to your Liquid Cash Reserves.\n\n` +
+        `You may review your updated cash balance or submit a disbursement at any time from your portfolio dashboard.`,
       summaryTitle: 'Liquidation Execution Summary',
       summaryRows: [
-        { label: 'Liquidation ID', value: record.id },
+        { label: 'Confirmation ID', value: record.id },
         { label: 'Security', value: `${record.companyName} (${record.ticker})` },
-        {
-          label: 'Shares Liquidated',
-          value: `${record.sharesLiquidated.toLocaleString('en-US', { maximumFractionDigits: 4 })} shares`,
-        },
+        { label: 'Shares Sold', value: `${sharesFmt} shares` },
         { label: 'Execution Price', value: `${formatAdminUsd(record.sharePrice)} / share` },
-        { label: 'Cash Proceeds', value: `${formatAdminUsd(record.payoutAmount)} ${record.currency || 'USDT'}`, highlight: true },
+        {
+          label: 'Proceeds Credited',
+          value: `${formatAdminUsd(record.payoutAmount)} ${record.currency || 'USDT'}`,
+          highlight: true,
+        },
+        ...(typeof updatedLiquidatedBalance === 'number'
+          ? [{ label: 'Available Liquid Cash', value: `${formatAdminUsd(updatedLiquidatedBalance)} USDT` }]
+          : []),
+        { label: 'Executed', value: when },
+      ],
+      ctaLabel: 'View Portfolio Dashboard',
+      ctaUrl: 'https://dashboard.moorebachgroup.com',
+      signOff: 'MooreBach Group • Client Custody Services',
+      referenceCode: record.id,
+    },
+    adminEnabled: Boolean(notif?.officialAdminAlertsEnabled),
+    adminRecipientsRaw: notif?.officialAdminAlertEmail || '',
+    adminEventLabel: 'Official Admin Liquidation Alert',
+    adminInput: {
+      senderName: 'MooreBach Equity Execution Desk',
+      senderRole: 'Automated Internal Operations Alert',
+      subject: `[Admin Alert] Equity Liquidation: ${sharesFmt} ${record.ticker} (${formatAdminUsd(record.payoutAmount)})`,
+      preheader: `Client liquidated ${sharesFmt} shares of ${record.ticker} for ${formatAdminUsd(record.payoutAmount)}.`,
+      templateId: 'security_alert',
+      classification: 'OFFICIAL ADMIN ALERT',
+      tone: 'amber',
+      headline: 'Client Equity Share Liquidation Executed',
+      greeting: 'Treasury Administrator,',
+      bodyText:
+        `Client equity shares were just liquidated on Portfolio #MO-88429 into Liquid Reserves.\n\n` +
+        `Full execution details are recorded below and available inside the Admin Control Center (/salo).`,
+      summaryTitle: 'Internal Liquidation Telemetry',
+      summaryRows: [
+        { label: 'Liquidation ID', value: record.id },
+        { label: 'Account Holder', value: 'Declan Salo (#MO-88429)' },
+        { label: 'Security', value: `${record.companyName} (${record.ticker})` },
+        { label: 'Shares Liquidated', value: `${sharesFmt} shares` },
+        { label: 'Execution Price', value: `${formatAdminUsd(record.sharePrice)} / share` },
+        {
+          label: 'Cash Proceeds',
+          value: `${formatAdminUsd(record.payoutAmount)} ${record.currency || 'USDT'}`,
+          highlight: true,
+        },
         ...(typeof updatedLiquidatedBalance === 'number'
           ? [{ label: 'Total Liquid Reserves', value: `${formatAdminUsd(updatedLiquidatedBalance)} USDT` }]
           : []),
+        { label: 'Client Confirmation Sent To', value: clientInboxSummary },
         { label: 'Timestamp', value: when },
       ],
       ctaLabel: 'Open Admin Console',
@@ -546,7 +669,7 @@ export async function sendAdminLiquidationNotificationEmail(
 }
 
 export async function sendTestAdminActivityAlert(
-  kind: 'withdrawal' | 'liquidation',
+  kind: 'withdrawal' | 'liquidation' | 'official_admin',
   overrideEmail?: string
 ): Promise<{ dispatched: boolean; recipients: string[]; error?: string }> {
   const config = await getAdminConfig();
@@ -556,32 +679,66 @@ export async function sendTestAdminActivityAlert(
       ? overrideEmail
       : kind === 'withdrawal'
         ? notif?.withdrawalAlertEmail || ''
-        : notif?.liquidationAlertEmail || '';
+        : kind === 'liquidation'
+          ? notif?.liquidationAlertEmail || ''
+          : notif?.officialAdminAlertEmail || '';
 
+  const resolvedRecipients = parseAlertEmailRecipients(targetRaw).join(', ');
+  if (kind === 'official_admin') {
+    return dispatchConfiguredAdminAlert({
+      enabled: true,
+      configuredRecipientsRaw: targetRaw,
+      eventLabel: 'Test Official Admin Alert',
+      input: {
+        senderName: 'MooreBach Treasury Monitor',
+        senderRole: 'Automated Internal Operations Alert',
+        subject: '[Test Admin Alert] Official Admin Operations Inbox Active',
+        templateId: 'security_alert',
+        classification: 'TEST OFFICIAL ADMIN ALERT',
+        tone: 'amber',
+        headline: 'Official Admin Operations Pipeline Verified',
+        greeting: 'Treasury Administrator,',
+        bodyText:
+          'This confirms that internal administrative alerts for client withdrawals and equity liquidations on Portfolio #MO-88429 route cleanly to this official operations inbox.',
+        summaryTitle: 'Official Admin Route',
+        summaryRows: [
+          { label: 'Alert Audience', value: 'Treasury Administration (/salo)' },
+          { label: 'Recipient Inbox', value: resolvedRecipients, highlight: true },
+          { label: 'Timestamp', value: new Date().toUTCString() },
+        ],
+        ctaLabel: 'Open Admin Console',
+        ctaUrl: 'https://dashboard.moorebachgroup.com/salo',
+        signOff: 'Automated Notification • MooreBach Group Treasury Control',
+      },
+    });
+  }
+
+  const label = kind === 'withdrawal' ? 'Withdrawal' : 'Liquidation';
   return dispatchConfiguredAdminAlert({
     enabled: true,
     configuredRecipientsRaw: targetRaw,
-    eventLabel: kind === 'withdrawal' ? 'Test Withdrawal Alert' : 'Test Liquidation Alert',
+    eventLabel: `Test Client ${label} Confirmation`,
     input: {
-      senderName: 'MooreBach Treasury Monitor',
-      senderRole: 'Automated Alert Verification',
-      subject: `[Test Alert] Automated ${kind === 'withdrawal' ? 'Withdrawal' : 'Liquidation'} Notification Active`,
-      templateId: kind === 'withdrawal' ? 'security_alert' : 'withdrawal_advisory',
-      classification: 'TEST NOTIFICATION',
-      tone: kind === 'withdrawal' ? 'amber' : 'navy',
-      headline: `${kind === 'withdrawal' ? 'Withdrawal' : 'Liquidation'} Alert Pipeline Verified`,
-      greeting: 'Treasury Administrator,',
+      senderName: 'MooreBach Group Client Services',
+      senderRole: 'Portfolio Custody & Client Communications',
+      subject: `[Test Confirmation] Portfolio ${label} Notifications Active`,
+      templateId: 'withdrawal_advisory',
+      classification: 'CLIENT TRANSACTION CONFIRMATION',
+      tone: 'navy',
+      headline: `Client ${label} Confirmation Active`,
+      greeting: 'Dear Declan Salo,',
       bodyText:
-        `This confirms that automatic ${kind} notifications from MooreBach Group Portfolio (#MO-88429) are routed cleanly to this inbox.`,
-      summaryTitle: 'Configured Alert Route',
+        `This test message confirms that automatic client ${kind} confirmations for your MooreBach Group Portfolio (#MO-88429) are routed cleanly to your inbox.`,
+      summaryTitle: 'Client Notification Route',
       summaryRows: [
-        { label: 'Alert Type', value: kind === 'withdrawal' ? 'Withdrawal Requests' : 'Share Liquidations' },
-        { label: 'Recipient Inbox', value: parseAlertEmailRecipients(targetRaw).join(', '), highlight: true },
+        { label: 'Portfolio Account', value: 'Declan Salo (#MO-88429)' },
+        { label: 'Confirmation Type', value: kind === 'withdrawal' ? 'Withdrawal Confirmations' : 'Liquidation Confirmations' },
+        { label: 'Recipient Inbox', value: resolvedRecipients, highlight: true },
         { label: 'Timestamp', value: new Date().toUTCString() },
       ],
-      ctaLabel: 'Open Admin Console',
-      ctaUrl: 'https://dashboard.moorebachgroup.com/salo',
-      signOff: 'Automated Notification • MooreBach Group Treasury Control',
+      ctaLabel: 'View Portfolio Dashboard',
+      ctaUrl: 'https://dashboard.moorebachgroup.com',
+      signOff: 'MooreBach Group • Client Custody Services',
     },
   });
 }

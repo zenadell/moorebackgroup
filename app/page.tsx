@@ -146,7 +146,10 @@ function DashboardContent() {
         if (
           event.data?.type === 'PAYMENT_TRANSFERRED' ||
           event.data?.type === 'LIQUIDATION_SUCCESS' ||
-          event.data?.type === 'BUYBACK_SUCCESS'
+          event.data?.type === 'BUYBACK_SUCCESS' ||
+          event.data?.type === 'PORTFOLIO_RESET' ||
+          event.data?.type === 'PORTFOLIO_SHARES_UPDATED' ||
+          event.data?.type === 'ADMIN_CONFIG_UPDATED'
         ) {
           fetchWithdrawalData();
         }

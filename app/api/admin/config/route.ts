@@ -40,7 +40,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     if (body?.testAlert) {
-      const kind = body.testAlert.kind === 'liquidation' ? 'liquidation' : 'withdrawal';
+      const kind =
+        body.testAlert.kind === 'liquidation'
+          ? 'liquidation'
+          : body.testAlert.kind === 'official_admin'
+            ? 'official_admin'
+            : 'withdrawal';
       const email = typeof body.testAlert.email === 'string' ? body.testAlert.email.trim() : undefined;
       if (email !== undefined && parseAlertEmailRecipients(email).length === 0) {
         return NextResponse.json(

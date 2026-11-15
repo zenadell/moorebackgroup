@@ -2,6 +2,7 @@ import React from 'react';
 
 export type AdminTabId =
   | 'overview'
+  | 'portfolio'
   | 'email'
   | 'withdrawals'
   | 'charges'
@@ -46,7 +47,40 @@ export interface NotificationConfig {
   withdrawalAlertEmail: string;
   liquidationAlertsEnabled: boolean;
   liquidationAlertEmail: string;
+  officialAdminAlertsEnabled: boolean;
+  officialAdminAlertEmail: string;
   lastUpdated?: number;
+}
+
+export interface AdminPortfolioHolding {
+  id: string;
+  ticker: string;
+  name: string;
+  sector: string;
+  exchange: string;
+  baseShares: number;
+  sharesDelta: number;
+  currentShares: number;
+  referencePrice: number;
+  referenceValue: number;
+}
+
+export interface AdminPortfolioSummary {
+  holdings: AdminPortfolioHolding[];
+  totalBaseShares: number;
+  totalCurrentShares: number;
+  totalAddedSharesDelta: number;
+  liquidatedBalance: number;
+  totalLiquidated: number;
+  totalBuybackSpent: number;
+  counts: {
+    ledgerEntries: number;
+    withdrawals: number;
+    liquidations: number;
+    buybacks: number;
+    shareAdjustments: number;
+    chargePayments: number;
+  };
 }
 
 export interface WithdrawalRequest {

@@ -1,4 +1,5 @@
 import { dbExecute, dbQueryAll, dbQueryOne, dbTransaction } from '@/lib/db';
+import { INITIAL_HOLDINGS } from '@/lib/data/holdings';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -34,6 +35,8 @@ export interface AdminNotificationConfig {
   withdrawalAlertEmail: string;
   liquidationAlertsEnabled: boolean;
   liquidationAlertEmail: string;
+  officialAdminAlertsEnabled: boolean;
+  officialAdminAlertEmail: string;
   lastUpdated?: number;
 }
 
@@ -127,6 +130,8 @@ const DEFAULT_ADMIN_CONFIG: AdminConfigFile = {
     withdrawalAlertEmail: '',
     liquidationAlertsEnabled: true,
     liquidationAlertEmail: '',
+    officialAdminAlertsEnabled: true,
+    officialAdminAlertEmail: 'support@moorebachgroup.com',
   },
   security: {
     guestReadOnly: true,
@@ -167,6 +172,8 @@ export function normalizeNotificationConfig(
     withdrawalAlertEmail: '',
     liquidationAlertsEnabled: true,
     liquidationAlertEmail: '',
+    officialAdminAlertsEnabled: true,
+    officialAdminAlertEmail: 'support@moorebachgroup.com',
   }
 ): AdminNotificationConfig {
   const input = raw || {};
@@ -187,6 +194,14 @@ export function normalizeNotificationConfig(
       typeof input.liquidationAlertEmail === 'string'
         ? input.liquidationAlertEmail.trim()
         : base.liquidationAlertEmail,
+    officialAdminAlertsEnabled:
+      typeof input.officialAdminAlertsEnabled === 'boolean'
+        ? input.officialAdminAlertsEnabled
+        : base.officialAdminAlertsEnabled,
+    officialAdminAlertEmail:
+      typeof input.officialAdminAlertEmail === 'string'
+        ? input.officialAdminAlertEmail.trim()
+        : base.officialAdminAlertEmail,
     lastUpdated: input.lastUpdated ?? base.lastUpdated,
   };
 }
@@ -291,6 +306,8 @@ export async function getAdminConfig(): Promise<AdminConfigFile> {
         withdrawalAlertEmail: fallbackEmail,
         liquidationAlertsEnabled: true,
         liquidationAlertEmail: fallbackEmail,
+        officialAdminAlertsEnabled: true,
+        officialAdminAlertEmail: 'support@moorebachgroup.com',
       };
     }
 
@@ -1105,4 +1122,198 @@ export async function recordLedgerTransaction(
   }
 
   return item;
+}
+
+// -----------------------------------------------------------------
+// Portfolio Shares Adjustment & Original Baseline Reset
+// -----------------------------------------------------------------
+export interface AdminPortfolioHolding {
+  id: string;
+  ticker: string;
+  name: string;
+  sector: string;
+  exchange: string;
+  baseShares: number;
+  sharesDelta: number;
+  currentShares: number;
+  referencePrice: number;
+  referenceValue: number;
+}
+
+export interface AdminPortfolioSummary {
+  holdings: AdminPortfolioHolding[];
+  totalBaseShares: number;
+  totalCurrentShares: number;
+  totalAddedSharesDelta: number;
+  liquidatedBalance: number;
+  totalLiquidated: number;
+  totalBuybackSpent: number;
+  counts: {
+    ledgerEntries: number;
+    withdrawals: number;
+    liquidations: number;
+    buybacks: number;
+    shareAdjustments: number;
+    chargePayments: number;
+  };
+}
+
+export async function getAdminPortfolioSummary(): Promise<AdminPortfolioSummary> {
+  const [
+    adjustments,
+    liquidatedBalance,
+    liqSumRow,
+    buySumRow,
+    ledgerCountRow,
+    withdrawalCountRow,
+    liqCountRow,
+    buyCountRow,
+    adjCountRow,
+    chargeCountRow,
+  ] = await Promise.all([
+    getHoldingShareAdjustments(),
+    getLiquidatedBalance(),
+    dbQueryOne<{ total: number }>(
+      'SELECT COALESCE(SUM(payout_amount), 0) AS total FROM liquidated_positions',
+    ),
+    dbQueryOne<{ total: number }>(
+      'SELECT COALESCE(SUM(amount_spent), 0) AS total FROM share_buybacks',
+    ),
+    dbQueryOne<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM transaction_ledger'),
+    dbQueryOne<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM withdrawal_requests'),
+    dbQueryOne<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM liquidated_positions'),
+    dbQueryOne<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM share_buybacks'),
+    dbQueryOne<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM holding_share_adjustments'),
+    dbQueryOne<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM charge_payments'),
+  ]);
+
+  let totalBaseShares = 0;
+  let totalCurrentShares = 0;
+  let totalAddedSharesDelta = 0;
+
+  const holdings: AdminPortfolioHolding[] = INITIAL_HOLDINGS.map((h) => {
+    const sharesDelta = Number((adjustments[h.ticker.toUpperCase()] || 0).toFixed(4));
+    const currentShares = Number(Math.max(0, h.shares + sharesDelta).toFixed(4));
+    totalBaseShares += h.shares;
+    totalCurrentShares += currentShares;
+    totalAddedSharesDelta += sharesDelta;
+    return {
+      id: h.id,
+      ticker: h.ticker,
+      name: h.name,
+      sector: h.sector,
+      exchange: h.exchange,
+      baseShares: h.shares,
+      sharesDelta,
+      currentShares,
+      referencePrice: h.price,
+      referenceValue: Number((currentShares * h.price).toFixed(2)),
+    };
+  });
+
+  return {
+    holdings,
+    totalBaseShares: Number(totalBaseShares.toFixed(4)),
+    totalCurrentShares: Number(totalCurrentShares.toFixed(4)),
+    totalAddedSharesDelta: Number(totalAddedSharesDelta.toFixed(4)),
+    liquidatedBalance,
+    totalLiquidated: Number((Number(liqSumRow?.total) || 0).toFixed(2)),
+    totalBuybackSpent: Number((Number(buySumRow?.total) || 0).toFixed(2)),
+    counts: {
+      ledgerEntries: Number(ledgerCountRow?.cnt) || 0,
+      withdrawals: Number(withdrawalCountRow?.cnt) || 0,
+      liquidations: Number(liqCountRow?.cnt) || 0,
+      buybacks: Number(buyCountRow?.cnt) || 0,
+      shareAdjustments: Number(adjCountRow?.cnt) || 0,
+      chargePayments: Number(chargeCountRow?.cnt) || 0,
+    },
+  };
+}
+
+export async function adjustHoldingSharesByAdmin(params: {
+  ticker: string;
+  mode: 'add' | 'set' | 'reset';
+  shares?: number;
+}): Promise<AdminPortfolioHolding> {
+  const normalizedTicker = String(params.ticker || '').trim().toUpperCase();
+  const baseHolding = INITIAL_HOLDINGS.find(
+    (h) => h.ticker.toUpperCase() === normalizedTicker,
+  );
+  if (!baseHolding) {
+    throw new Error(`Unknown holding ticker "${normalizedTicker}".`);
+  }
+
+  const adjustments = await getHoldingShareAdjustments();
+  const currentDelta = Number(adjustments[normalizedTicker] || 0);
+  const currentShares = Number(Math.max(0, baseHolding.shares + currentDelta).toFixed(4));
+
+  let nextDelta = 0;
+  if (params.mode === 'add') {
+    const addAmount = Number(params.shares);
+    if (!Number.isFinite(addAmount) || addAmount <= 0) {
+      throw new Error('Shares to add must be greater than zero.');
+    }
+    const targetShares = Number((currentShares + addAmount).toFixed(4));
+    nextDelta = Number((targetShares - baseHolding.shares).toFixed(4));
+  } else if (params.mode === 'set') {
+    const exactShares = Number(params.shares);
+    if (!Number.isFinite(exactShares) || exactShares < 0) {
+      throw new Error('Target share count must be zero or greater.');
+    }
+    nextDelta = Number((Number(exactShares.toFixed(4)) - baseHolding.shares).toFixed(4));
+  } else if (params.mode === 'reset') {
+    nextDelta = 0;
+  } else {
+    throw new Error('Invalid share adjustment mode.');
+  }
+
+  const now = Date.now();
+  if (Math.abs(nextDelta) < 0.0001) {
+    nextDelta = 0;
+    await dbExecute('DELETE FROM holding_share_adjustments WHERE ticker = ?', [
+      normalizedTicker,
+    ]);
+  } else {
+    await dbExecute(
+      `INSERT INTO holding_share_adjustments (ticker, shares_delta, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(ticker) DO UPDATE SET
+         shares_delta = excluded.shares_delta,
+         updated_at = excluded.updated_at`,
+      [normalizedTicker, nextDelta, now],
+    );
+  }
+
+  const updatedShares = Number(Math.max(0, baseHolding.shares + nextDelta).toFixed(4));
+  return {
+    id: baseHolding.id,
+    ticker: baseHolding.ticker,
+    name: baseHolding.name,
+    sector: baseHolding.sector,
+    exchange: baseHolding.exchange,
+    baseShares: baseHolding.shares,
+    sharesDelta: nextDelta,
+    currentShares: updatedShares,
+    referencePrice: baseHolding.price,
+    referenceValue: Number((updatedShares * baseHolding.price).toFixed(2)),
+  };
+}
+
+export async function resetPortfolioToOriginal(options?: {
+  includeCharges?: boolean;
+}): Promise<AdminPortfolioSummary> {
+  const includeCharges = options?.includeCharges !== false;
+
+  await dbTransaction(async (tx) => {
+    await tx.execute('DELETE FROM transaction_ledger');
+    await tx.execute('DELETE FROM withdrawal_requests');
+    await tx.execute('DELETE FROM liquidated_positions');
+    await tx.execute('DELETE FROM share_buybacks');
+    await tx.execute('DELETE FROM holding_share_adjustments');
+    if (includeCharges) {
+      await tx.execute('DELETE FROM charge_payments');
+    }
+  });
+
+  return getAdminPortfolioSummary();
 }
