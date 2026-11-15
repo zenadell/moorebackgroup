@@ -1,4 +1,4 @@
-import { dbExecute, dbQueryAll, dbQueryOne } from '@/lib/db';
+import { dbExecute, dbQueryAll, dbQueryOne, getDbDiagnostics } from '@/lib/db';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import {
@@ -734,10 +734,14 @@ export async function resendOtpChallenge(params: {
   });
 
   if (rows.length === 0 && !params.challengeId) {
+    const diag = getDbDiagnostics();
     return {
       success: false,
-      status: 404,
-      error: 'Verification challenge not found or expired. Please sign in again.',
+      status: diag.engine === 'sqlite-ephemeral-serverless' ? 503 : 404,
+      error:
+        diag.engine === 'sqlite-ephemeral-serverless'
+          ? 'Database not connected on Vercel Production (DATABASE_URL missing). Connect Neon PostgreSQL in Vercel Environment Variables and redeploy.'
+          : 'Verification challenge not found or expired. Please sign in again.',
     };
   }
 
@@ -820,9 +824,13 @@ export async function verifyOtp(params: {
   });
 
   if (rows.length === 0) {
+    const diag = getDbDiagnostics();
     return {
       valid: false,
-      error: 'Verification session not found or expired. Please request a new code.',
+      error:
+        diag.engine === 'sqlite-ephemeral-serverless'
+          ? 'Server database is not connected on Vercel Production (DATABASE_URL missing). Verification codes cannot persist across requests until DATABASE_URL is added in Vercel Production and redeployed.'
+          : 'Verification session not found or expired. Please request a new code.',
     };
   }
 

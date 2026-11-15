@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
     };
 
     const signedCookie = readSignedChallengeCookie(req);
-    const effectiveChallengeId = signedCookie?.challengeId || challengeId || null;
+    const effectiveChallengeId =
+      (typeof challengeId === 'string' && challengeId.trim()) || signedCookie?.challengeId || null;
 
     if (!otpId && !effectiveChallengeId) {
       return NextResponse.json(

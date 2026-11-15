@@ -7,6 +7,7 @@ import {
   getRecentOtpLogs,
 } from '@/lib/auth/twoFactor';
 import { NO_STORE_HEADERS } from '@/lib/auth/otpHttp';
+import { getDbDiagnostics } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -23,12 +24,14 @@ export async function GET(req: NextRequest) {
 
     const settings = await getTwoFactorSettings();
     const logs = await getRecentOtpLogs();
+    const dbStatus = getDbDiagnostics();
 
     return NextResponse.json(
       {
         success: true,
         settings,
         logs,
+        dbStatus,
       },
       { headers: NO_STORE_HEADERS }
     );

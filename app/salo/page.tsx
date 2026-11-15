@@ -19,6 +19,7 @@ import {
 import {
   AdminTabId,
   BeneficiaryInfo,
+  DbRuntimeStatus,
   OtpLog,
   PrincipalProfile,
   SessionItem,
@@ -211,6 +212,7 @@ export default function SaloAdminPortal() {
   const [isSaving2FA, setIsSaving2FA] = useState(false);
   const [twoFactorStatusMsg, setTwoFactorStatusMsg] = useState<StatusBanner | null>(null);
   const [copiedOtp, setCopiedOtp] = useState<string | null>(null);
+  const [dbStatus, setDbStatus] = useState<DbRuntimeStatus | null>(null);
   const twoFactorReqSeqRef = useRef(0);
 
   // Profile State
@@ -336,6 +338,7 @@ export default function SaloAdminPortal() {
       if (res.ok && data.success) {
         if (data.settings) setTwoFactorSettings(data.settings);
         if (Array.isArray(data.logs)) setOtpLogs(data.logs);
+        if (data.dbStatus) setDbStatus(data.dbStatus);
       }
     } catch {}
   }, []);
@@ -1122,6 +1125,27 @@ export default function SaloAdminPortal() {
         </div>
 
         <main className="salo-content">
+          {dbStatus && dbStatus.engine === 'sqlite-ephemeral-serverless' && (
+            <div
+              style={{
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fca5a5',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                marginBottom: '16px',
+                color: '#991b1b',
+                fontSize: '12.5px',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>CRITICAL — Production Database Not Connected:</strong> This Vercel deployment does not have{' '}
+              <code>DATABASE_URL</code> (or <code>POSTGRES_URL</code>) active in Production Environment Variables,
+              so each serverless container is falling back to temporary <code>/tmp</code> SQLite. Add{' '}
+              <code>DATABASE_URL</code> under Vercel → Project Settings → Environment Variables (Production) and trigger
+              a Redeploy so OTPs, API keys, and payments share across devices.
+            </div>
+          )}
+
           {activeTab === 'overview' && (
             <OverviewTab
               onSelectTab={setActiveTab}
@@ -1218,6 +1242,7 @@ export default function SaloAdminPortal() {
               isRemovingResendKey={isRemovingResendKey}
               twoFactorStatusMsg={twoFactorStatusMsg}
               otpLogs={otpLogs}
+              dbStatus={dbStatus}
               copiedOtp={copiedOtp}
               onSave2FA={handleSave2FA}
               onRemoveResendKey={handleRemoveResendKey}

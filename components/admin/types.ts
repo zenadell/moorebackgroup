@@ -100,6 +100,13 @@ export interface OtpLog {
   superseded?: boolean;
 }
 
+export interface DbRuntimeStatus {
+  engine: 'neon-postgres' | 'sqlite-local' | 'sqlite-ephemeral-serverless';
+  isPostgres: boolean;
+  isServerless: boolean;
+  detectedEnvVar: string | null;
+}
+
 export interface PrincipalProfile {
   name: string;
   email: string;

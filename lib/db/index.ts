@@ -21,17 +21,81 @@ const g = globalThis as typeof globalThis & {
   __mobackSqliteTxChain?: Promise<unknown>;
 };
 
+export interface DbDiagnostics {
+  engine: 'neon-postgres' | 'sqlite-local' | 'sqlite-ephemeral-serverless';
+  isPostgres: boolean;
+  isServerless: boolean;
+  detectedEnvVar: string | null;
+}
+
+function resolvePostgresEnv(): { url: string; envName: string | null } {
+  const priorityKeys = [
+    'DATABASE_URL',
+    'POSTGRES_URL',
+    'POSTGRES_PRISMA_URL',
+    'DATABASE_URL_UNPOOLED',
+    'POSTGRES_URL_NON_POOLING',
+    'POSTGRES_URL_NO_SSL',
+    'NEON_DATABASE_URL',
+  ];
+
+  for (const key of priorityKeys) {
+    const val = process.env[key]?.trim();
+    if (val && /^postgres(ql)?:\/\//i.test(val)) {
+      return { url: val, envName: key };
+    }
+  }
+
+  // Scan Vercel Storage custom-prefixed variables (e.g., STORAGE_DATABASE_URL, *_POSTGRES_URL)
+  for (const [key, rawVal] of Object.entries(process.env)) {
+    if (!/(?:DATABASE_URL|POSTGRES_URL|POSTGRES_PRISMA_URL)$/i.test(key)) continue;
+    const val = rawVal?.trim();
+    if (val && /^postgres(ql)?:\/\//i.test(val)) {
+      return { url: val, envName: key };
+    }
+  }
+
+  const host = (process.env.PGHOST || '').trim();
+  const user = (process.env.PGUSER || process.env.POSTGRES_USER || '').trim();
+  const pass = (process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD || '').trim();
+  const db = (process.env.PGDATABASE || process.env.POSTGRES_DATABASE || '').trim();
+  if (host && user && pass && db) {
+    return {
+      url: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/${encodeURIComponent(db)}?sslmode=require`,
+      envName: 'PGHOST+PGUSER+PGPASSWORD+PGDATABASE',
+    };
+  }
+
+  return { url: '', envName: null };
+}
+
 export function getPostgresUrl(): string {
-  return (
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    ''
-  ).trim();
+  return resolvePostgresEnv().url;
 }
 
 export function isPostgresConfigured(): boolean {
   return Boolean(getPostgresUrl());
+}
+
+export function getDbDiagnostics(): DbDiagnostics {
+  const resolved = resolvePostgresEnv();
+  const isServerless = Boolean(
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY
+  );
+  if (resolved.url) {
+    return {
+      engine: 'neon-postgres',
+      isPostgres: true,
+      isServerless,
+      detectedEnvVar: resolved.envName,
+    };
+  }
+  return {
+    engine: isServerless ? 'sqlite-ephemeral-serverless' : 'sqlite-local',
+    isPostgres: false,
+    isServerless,
+    detectedEnvVar: null,
+  };
 }
 
 /**

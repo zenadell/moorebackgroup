@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ModernButtonSpinner } from '@/components/ui/ModernLoader';
 import {
+  DbRuntimeStatus,
   OtpLog,
   StatusBanner,
   TwoFactorSettings,
@@ -41,6 +42,7 @@ interface TwoFactorTabProps {
   isRemovingResendKey?: boolean;
   twoFactorStatusMsg: StatusBanner | null;
   otpLogs: OtpLog[];
+  dbStatus?: DbRuntimeStatus | null;
   copiedOtp: string | null;
   onSave2FA: (e: React.FormEvent) => void;
   onRemoveResendKey?: () => void;
@@ -63,6 +65,7 @@ export function TwoFactorTab({
   isRemovingResendKey = false,
   twoFactorStatusMsg,
   otpLogs,
+  dbStatus,
   copiedOtp,
   onSave2FA,
   onRemoveResendKey,
@@ -101,10 +104,45 @@ export function TwoFactorTab({
               Real-time 6-digit login challenge codes (auto-refreshes every 4s).
             </p>
           </div>
-          <button type="button" onClick={onRefreshOtp} style={saloSecondaryBtn}>
-            <RefreshCw style={{ width: '13px', height: '13px' }} />
-            <span>Refresh</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {dbStatus && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  padding: '3px 8px',
+                  borderRadius: '9999px',
+                  backgroundColor: dbStatus.isPostgres
+                    ? '#ecfdf5'
+                    : dbStatus.engine === 'sqlite-ephemeral-serverless'
+                    ? '#fef2f2'
+                    : '#f3f4f6',
+                  color: dbStatus.isPostgres
+                    ? '#065f46'
+                    : dbStatus.engine === 'sqlite-ephemeral-serverless'
+                    ? '#991b1b'
+                    : '#4b5563',
+                  border: `1px solid ${
+                    dbStatus.isPostgres
+                      ? '#a7f3d0'
+                      : dbStatus.engine === 'sqlite-ephemeral-serverless'
+                      ? '#fecaca'
+                      : '#e5e7eb'
+                  }`,
+                }}
+              >
+                {dbStatus.isPostgres
+                  ? `Neon PostgreSQL (${dbStatus.detectedEnvVar || 'DB'})`
+                  : dbStatus.engine === 'sqlite-ephemeral-serverless'
+                  ? 'Ephemeral /tmp SQLite (Missing DATABASE_URL)'
+                  : 'Local SQLite'}
+              </span>
+            )}
+            <button type="button" onClick={onRefreshOtp} style={saloSecondaryBtn}>
+              <RefreshCw style={{ width: '13px', height: '13px' }} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
         {otpLogs.length === 0 ? (
