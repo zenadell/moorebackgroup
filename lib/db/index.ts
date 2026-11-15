@@ -363,6 +363,11 @@ async function initializeDatabase(connectionKey: string): Promise<void> {
     for (const stmt of POSTGRES_TABLES_SQL) {
       await client.execute(stmt);
     }
+    // Idempotent column migrations on pre-existing PostgreSQL tables before creating new indexes
+    await client.execute(`ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS challenge_id TEXT`);
+    await client.execute(
+      `ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS superseded INTEGER NOT NULL DEFAULT 0`
+    );
     for (const idxStmt of POSTGRES_INDEXES_SQL) {
       await client.execute(idxStmt);
     }
@@ -371,9 +376,6 @@ async function initializeDatabase(connectionKey: string): Promise<void> {
     for (const stmt of POSTGRES_TABLES_SQL) {
       sqlite.exec(stmt.replace(/DOUBLE PRECISION/g, 'REAL').replace(/BIGINT/g, 'INTEGER'));
     }
-    for (const idxStmt of POSTGRES_INDEXES_SQL) {
-      sqlite.exec(idxStmt);
-    }
 
     // Preserve legacy column additions for pre-existing local SQLite databases
     const otpCols = sqlite.prepare('PRAGMA table_info(otp_codes)').all() as Array<{ name: string }>;
@@ -381,6 +383,16 @@ async function initializeDatabase(connectionKey: string): Promise<void> {
       sqlite.exec(
         "ALTER TABLE otp_codes ADD COLUMN location TEXT NOT NULL DEFAULT 'Location unavailable'"
       );
+    }
+    if (!otpCols.some((c) => c.name === 'challenge_id')) {
+      sqlite.exec('ALTER TABLE otp_codes ADD COLUMN challenge_id TEXT');
+    }
+    if (!otpCols.some((c) => c.name === 'superseded')) {
+      sqlite.exec('ALTER TABLE otp_codes ADD COLUMN superseded INTEGER NOT NULL DEFAULT 0');
+    }
+
+    for (const idxStmt of POSTGRES_INDEXES_SQL) {
+      sqlite.exec(idxStmt);
     }
 
     const wCols = sqlite

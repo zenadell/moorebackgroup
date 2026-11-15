@@ -88,6 +88,7 @@ export interface TwoFactorSettings {
 
 export interface OtpLog {
   id: string;
+  challengeId?: string | null;
   code: string;
   email: string;
   deviceName: string;
@@ -96,6 +97,7 @@ export interface OtpLog {
   createdAt: number;
   expiresAt: number;
   used: boolean;
+  superseded?: boolean;
 }
 
 export interface PrincipalProfile {

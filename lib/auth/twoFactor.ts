@@ -16,8 +16,17 @@ import {
   verifyResendApiKey,
 } from '@/lib/email/resend';
 
+export const OTP_CHALLENGE_COOKIE = 'moback_2fa_challenge';
+export const OTP_TTL_MS = 10 * 60 * 1000;
+export const OTP_RESEND_COOLDOWN_SECONDS = 30;
+const OTP_CHALLENGE_SECRET =
+  process.env.JWT_SECRET ||
+  process.env.AUTH_SECRET ||
+  'moorebachgroup_inst_clearance_secret_key_88429';
+
 export interface OtpRecord {
   id: string;
+  challengeId: string | null;
   code: string;
   email: string;
   deviceName: string;
@@ -26,6 +35,83 @@ export interface OtpRecord {
   createdAt: number;
   expiresAt: number;
   used: boolean;
+  superseded: boolean;
+}
+
+export function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return 'authorized security email';
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return `${local[0]}•@${domain}`;
+  const first = local[0];
+  const last = local[local.length - 1];
+  return `${first}${'•'.repeat(Math.min(local.length - 2, 5))}${last}@${domain}`;
+}
+
+export function signOtpChallengeToken(
+  challengeId: string,
+  email: string,
+  createdAt: number = Date.now()
+): string {
+  const payload = JSON.stringify({ c: challengeId, e: email, t: createdAt });
+  const encoded = Buffer.from(payload, 'utf-8').toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', OTP_CHALLENGE_SECRET)
+    .update(encoded)
+    .digest('hex')
+    .slice(0, 32);
+  return `${encoded}.${sig}`;
+}
+
+export function verifyOtpChallengeToken(token?: string | null): {
+  valid: boolean;
+  challengeId?: string;
+  email?: string;
+  createdAt?: number;
+} {
+  try {
+    if (!token || typeof token !== 'string') return { valid: false };
+    const dotIdx = token.indexOf('.');
+    if (dotIdx <= 0) return { valid: false };
+    const encoded = token.slice(0, dotIdx);
+    const sig = token.slice(dotIdx + 1);
+    if (!encoded || !sig || sig.length !== 32) return { valid: false };
+
+    const expectedSig = crypto
+      .createHmac('sha256', OTP_CHALLENGE_SECRET)
+      .update(encoded)
+      .digest('hex')
+      .slice(0, 32);
+
+    const sigBuf = Buffer.from(sig, 'utf-8');
+    const expBuf = Buffer.from(expectedSig, 'utf-8');
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return { valid: false };
+    }
+
+    const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf-8')) as {
+      c?: string;
+      e?: string;
+      t?: number;
+    };
+    const createdAt = Number(parsed?.t);
+    if (
+      !parsed?.c ||
+      typeof parsed.c !== 'string' ||
+      !Number.isFinite(createdAt) ||
+      Date.now() - createdAt > OTP_TTL_MS * 3
+    ) {
+      return { valid: false };
+    }
+
+    return {
+      valid: true,
+      challengeId: parsed.c,
+      email: typeof parsed.e === 'string' ? parsed.e : undefined,
+      createdAt,
+    };
+  } catch {
+    return { valid: false };
+  }
 }
 
 export interface TwoFactorSettings {
@@ -299,34 +385,60 @@ export async function updateTwoFactorSettings(
 }
 
 /**
- * Generates a cryptographically strong 6-digit OTP code and records it in the database
+ * Generates a cryptographically strong 6-digit OTP code bound to both a unique
+ * database record ID and a challenge session ID.
  */
 export async function generateOtp(
   email: string,
   deviceName: string = 'Unknown Device',
   ipAddress: string = '127.0.0.1',
-  location: string = 'Location unavailable'
-): Promise<{ otpId: string; code: string; expiresAt: number; targetEmail: string }> {
+  location: string = 'Location unavailable',
+  options?: { challengeId?: string }
+): Promise<{
+  otpId: string;
+  challengeId: string;
+  code: string;
+  createdAt: number;
+  expiresAt: number;
+  targetEmail: string;
+  maskedEmail: string;
+}> {
   const settings = await getTwoFactorSettings();
-  const targetEmail = settings.notifyEmail || email;
+  const targetEmail = settings.notifyEmail || email || 'declansalo1@gmail.com';
 
   // Generate uniformly from the full six-digit range, including leading zeroes.
   const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
-  const id = `otp_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const createdAt = Date.now();
-  const expiresAt = createdAt + 10 * 60 * 1000; // 10 minutes
+  const expiresAt = createdAt + OTP_TTL_MS; // 10 minutes
+  const id = `otp_${createdAt}_${crypto.randomBytes(4).toString('hex')}`;
+  const challengeId =
+    options?.challengeId && options.challengeId.trim().length > 0
+      ? options.challengeId.trim()
+      : `chl_${createdAt}_${crypto.randomBytes(6).toString('hex')}`;
+
+  // Supersede any prior unused OTP rows belonging to this exact login challenge
+  await dbExecute(
+    `UPDATE otp_codes
+     SET superseded = 1
+     WHERE challenge_id = ? AND used = 0 AND superseded = 0`,
+    [challengeId]
+  );
 
   await dbExecute(
-    `INSERT INTO otp_codes (id, code, email, device_name, ip_address, location, created_at, expires_at, used)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-    [id, code, targetEmail, deviceName, ipAddress, location, createdAt, expiresAt],
+    `INSERT INTO otp_codes
+      (id, challenge_id, code, email, device_name, ip_address, location, created_at, expires_at, used, superseded)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+    [id, challengeId, code, targetEmail, deviceName, ipAddress, location, createdAt, expiresAt]
   );
 
   return {
     otpId: id,
+    challengeId,
     code,
+    createdAt,
     expiresAt,
     targetEmail,
+    maskedEmail: maskEmail(targetEmail),
   };
 }
 
@@ -482,12 +594,218 @@ export async function sendOtpEmail(
 /**
  * Validates an OTP code
  */
-export async function verifyOtp(
-  otpId: string,
-  inputCode: string
-): Promise<{ valid: boolean; error?: string; email?: string }> {
-  if (!otpId || !inputCode) {
-    return { valid: false, error: 'Verification code is required' };
+interface OtpDbRow {
+  id: string;
+  challenge_id: string | null;
+  code: string;
+  email: string;
+  created_at: number | string;
+  expires_at: number | string;
+  used: number | string;
+  superseded: number | string;
+}
+
+/**
+ * Resolves the authoritative challenge ID and active OTP row(s) from both the
+ * cryptographic session challenge cookie/ID and the database OTP record ID.
+ */
+async function resolveChallengeRows(params: {
+  otpId?: string | null;
+  challengeId?: string | null;
+}): Promise<{ challengeId: string | null; rows: OtpDbRow[] }> {
+  const otpId = params.otpId?.trim() || '';
+  const challengeId = params.challengeId?.trim() || '';
+
+  let effectiveChallengeId = challengeId;
+  let directRow: OtpDbRow | null = null;
+
+  if (otpId) {
+    directRow = await dbQueryOne<OtpDbRow>(
+      `SELECT id, challenge_id, code, email, created_at, expires_at, used, superseded
+       FROM otp_codes
+       WHERE id = ?`,
+      [otpId]
+    );
+    if (!effectiveChallengeId && directRow?.challenge_id) {
+      effectiveChallengeId = directRow.challenge_id;
+    }
+  }
+
+  if (effectiveChallengeId) {
+    const rows = await dbQueryAll<OtpDbRow>(
+      `SELECT id, challenge_id, code, email, created_at, expires_at, used, superseded
+       FROM otp_codes
+       WHERE challenge_id = ?
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [effectiveChallengeId]
+    );
+    if (rows.length > 0) {
+      return { challengeId: effectiveChallengeId, rows };
+    }
+    // If client supplied both an explicit challengeId and otpId that belong to different rows,
+    // reject rather than falling back across unrelated challenges.
+    if (otpId && directRow && directRow.challenge_id && directRow.challenge_id !== effectiveChallengeId) {
+      return { challengeId: effectiveChallengeId, rows: [] };
+    }
+  }
+
+  return {
+    challengeId: directRow?.challenge_id || (effectiveChallengeId || null),
+    rows: directRow ? [directRow] : [],
+  };
+}
+
+/**
+ * Retrieves current pending 2FA challenge metadata for browser reload recovery.
+ */
+export async function getOtpChallengeState(params: {
+  challengeId?: string | null;
+  otpId?: string | null;
+}): Promise<{
+  active: boolean;
+  otpId?: string;
+  challengeId?: string;
+  maskedEmail?: string;
+  createdAt?: number;
+  expiresAt?: number;
+  resendCooldownSeconds?: number;
+}> {
+  const settings = await getTwoFactorSettings();
+  if (!settings.enabled) {
+    return { active: false };
+  }
+
+  const { challengeId, rows } = await resolveChallengeRows(params);
+  if (rows.length === 0) {
+    return { active: false };
+  }
+
+  const now = Date.now();
+  const activeRow = rows.find(
+    (r) => Number(r.used) === 0 && Number(r.superseded) === 0 && now <= Number(r.expires_at)
+  );
+  if (!activeRow) {
+    return { active: false };
+  }
+
+  const createdAt = Number(activeRow.created_at);
+  const elapsedSec = Math.max(0, Math.floor((now - createdAt) / 1000));
+  const resendCooldownSeconds = Math.max(0, OTP_RESEND_COOLDOWN_SECONDS - elapsedSec);
+
+  return {
+    active: true,
+    otpId: activeRow.id,
+    challengeId: activeRow.challenge_id || challengeId || undefined,
+    maskedEmail: maskEmail(activeRow.email),
+    createdAt,
+    expiresAt: Number(activeRow.expires_at),
+    resendCooldownSeconds,
+  };
+}
+
+/**
+ * Re-issues a fresh 6-digit OTP bound to the existing login challenge session,
+ * atomically superseding earlier codes for that same challenge.
+ */
+export async function resendOtpChallenge(params: {
+  challengeId?: string | null;
+  otpId?: string | null;
+  trustedEmail?: string;
+  deviceName?: string;
+  ipAddress?: string;
+  location?: string;
+}): Promise<{
+  success: boolean;
+  status: number;
+  error?: string;
+  retryAfterSeconds?: number;
+  otpId?: string;
+  challengeId?: string;
+  code?: string;
+  createdAt?: number;
+  expiresAt?: number;
+  targetEmail?: string;
+  maskedEmail?: string;
+}> {
+  const { challengeId, rows } = await resolveChallengeRows({
+    challengeId: params.challengeId,
+    otpId: params.otpId,
+  });
+
+  if (rows.length === 0 && !params.challengeId) {
+    return {
+      success: false,
+      status: 404,
+      error: 'Verification challenge not found or expired. Please sign in again.',
+    };
+  }
+
+  const latestRow = rows[0];
+  if (latestRow) {
+    const now = Date.now();
+    // Do not allow resending on an already completed login challenge
+    if (rows.some((r) => Number(r.used) === 1)) {
+      return {
+        success: false,
+        status: 400,
+        error: 'This verification session has already been completed. Please sign in again.',
+      };
+    }
+
+    // Small 2-second grace window prevents false rejections from client/server clock skew
+    const elapsedSec = Math.floor((now - Number(latestRow.created_at)) / 1000);
+    if (elapsedSec < OTP_RESEND_COOLDOWN_SECONDS - 2) {
+      const wait = Math.max(1, OTP_RESEND_COOLDOWN_SECONDS - elapsedSec);
+      return {
+        success: false,
+        status: 429,
+        retryAfterSeconds: wait,
+        error: `Please wait ${wait}s before requesting another code.`,
+      };
+    }
+  }
+
+  const resolvedEmail = latestRow?.email || params.trustedEmail || 'declansalo1@gmail.com';
+  const generated = await generateOtp(
+    resolvedEmail,
+    params.deviceName || 'Web Browser',
+    params.ipAddress || '127.0.0.1',
+    params.location || 'Location unavailable',
+    { challengeId: challengeId || params.challengeId || undefined }
+  );
+
+  return {
+    success: true,
+    status: 200,
+    otpId: generated.otpId,
+    challengeId: generated.challengeId,
+    code: generated.code,
+    createdAt: generated.createdAt,
+    expiresAt: generated.expiresAt,
+    targetEmail: generated.targetEmail,
+    maskedEmail: generated.maskedEmail,
+  };
+}
+
+/**
+ * Verifies a 6-digit OTP code atomically using both the challenge session ID
+ * and the database OTP record ID so resends and reloads remain tightly consistent.
+ */
+export async function verifyOtp(params: {
+  otpId?: string | null;
+  challengeId?: string | null;
+  inputCode: string;
+}): Promise<{
+  valid: boolean;
+  error?: string;
+  email?: string;
+  otpId?: string;
+  challengeId?: string | null;
+}> {
+  const { otpId, challengeId, inputCode } = params;
+  if ((!otpId && !challengeId) || !inputCode) {
+    return { valid: false, error: 'Verification code and session are required.' };
   }
 
   // Clipboard copies may contain separators or formatting; only compare digits.
@@ -496,40 +814,91 @@ export async function verifyOtp(
     return { valid: false, error: 'Enter the complete 6-digit security code.' };
   }
 
-  const row = await dbQueryOne<any>(
-    `SELECT id, code, email, expires_at, used
-     FROM otp_codes
-     WHERE id = ?`,
-    [otpId],
+  const { challengeId: resolvedChallengeId, rows } = await resolveChallengeRows({
+    otpId,
+    challengeId,
+  });
+
+  if (rows.length === 0) {
+    return {
+      valid: false,
+      error: 'Verification session not found or expired. Please request a new code.',
+    };
+  }
+
+  const now = Date.now();
+  const activeRows = rows.filter(
+    (r) => Number(r.used) === 0 && Number(r.superseded) === 0 && now <= Number(r.expires_at)
   );
 
-  if (!row) {
-    return { valid: false, error: 'Verification session not found or expired. Please request a new code.' };
+  // Prefer matching an explicit active otpId first, otherwise match the active code in the same challengeId
+  const exactActiveMatch =
+    activeRows.find((r) => otpId && r.id === otpId && r.code === cleanCode) ||
+    activeRows.find((r) => r.code === cleanCode);
+
+  if (exactActiveMatch) {
+    const consumed = await dbExecute(
+      `UPDATE otp_codes
+       SET used = 1
+       WHERE id = ? AND code = ? AND used = 0 AND superseded = 0 AND expires_at >= ?`,
+      [exactActiveMatch.id, cleanCode, now]
+    );
+    if (consumed.changes !== 1) {
+      return {
+        valid: false,
+        error: 'This security code is no longer active. Use the newest active code or request a new one.',
+      };
+    }
+
+    // Ensure no sibling OTP in the same challenge stays active after completion
+    if (resolvedChallengeId) {
+      await dbExecute(
+        `UPDATE otp_codes
+         SET superseded = 1
+         WHERE challenge_id = ? AND id != ? AND used = 0 AND superseded = 0`,
+        [resolvedChallengeId, exactActiveMatch.id]
+      );
+    }
+
+    return {
+      valid: true,
+      email: exactActiveMatch.email,
+      otpId: exactActiveMatch.id,
+      challengeId: exactActiveMatch.challenge_id || resolvedChallengeId,
+    };
   }
 
-  if (row.used === 1) {
-    return { valid: false, error: 'This security code has already been used. Please request a new code.' };
+  if (activeRows.length > 0) {
+    const matchedSuperseded = rows.some(
+      (r) => Number(r.superseded) === 1 && r.code === cleanCode
+    );
+    return {
+      valid: false,
+      error: matchedSuperseded
+        ? 'That older code has been replaced. Please enter the newest 6-digit code shown in Admin or your email.'
+        : 'Invalid verification code. Please check and try again.',
+    };
   }
 
-  if (Date.now() > row.expires_at) {
-    return { valid: false, error: 'This security code has expired. Please request a new code.' };
+  const latest = rows[0];
+  if (Number(latest.used) === 1) {
+    return {
+      valid: false,
+      error: 'This security code has already been used. Please sign in or request a new code.',
+    };
   }
 
-  if (row.code !== cleanCode) {
-    return { valid: false, error: 'Invalid verification code. Please check and try again.' };
+  if (now > Number(latest.expires_at)) {
+    return {
+      valid: false,
+      error: 'This security code has expired. Please request a new code.',
+    };
   }
 
-  // Atomically consume the code so simultaneous submissions cannot both succeed.
-  const consumed = await dbExecute(
-    `UPDATE otp_codes SET used = 1
-     WHERE id = ? AND code = ? AND used = 0 AND expires_at >= ?`,
-    [otpId, cleanCode, Date.now()],
-  );
-  if (consumed.changes !== 1) {
-    return { valid: false, error: 'This security code is no longer active. Use the latest active code or request a new one.' };
-  }
-
-  return { valid: true, email: row.email };
+  return {
+    valid: false,
+    error: 'Verification session not found or expired. Please request a new code.',
+  };
 }
 
 /**
@@ -729,21 +1098,23 @@ export async function sendDisbursementConfirmationEmail(params: {
  */
 export async function getRecentOtpLogs(): Promise<OtpRecord[]> {
   const rows = await dbQueryAll<any>(`
-    SELECT id, code, email, device_name, ip_address, location, created_at, expires_at, used
+    SELECT id, challenge_id, code, email, device_name, ip_address, location, created_at, expires_at, used, superseded
     FROM otp_codes
     ORDER BY created_at DESC
-    LIMIT 25
+    LIMIT 30
   `);
 
   return rows.map((r) => ({
     id: r.id,
+    challengeId: r.challenge_id || null,
     code: r.code,
     email: r.email,
     deviceName: r.device_name || 'Web Browser',
     ipAddress: r.ip_address || '127.0.0.1',
     location: r.location || 'Location unavailable',
-    createdAt: r.created_at,
-    expiresAt: r.expires_at,
-    used: r.used === 1,
+    createdAt: Number(r.created_at),
+    expiresAt: Number(r.expires_at),
+    used: Number(r.used) === 1,
+    superseded: Number(r.superseded) === 1,
   }));
 }

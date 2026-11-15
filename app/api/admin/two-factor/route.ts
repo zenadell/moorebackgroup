@@ -6,25 +6,38 @@ import {
   clearResendApiKey,
   getRecentOtpLogs,
 } from '@/lib/auth/twoFactor';
+import { NO_STORE_HEADERS } from '@/lib/auth/otpHttp';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
     const auth = await authorizeMasterRequest(req);
     if (!auth.ok) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+      return NextResponse.json(
+        { success: false, error: auth.error },
+        { status: auth.status, headers: NO_STORE_HEADERS }
+      );
     }
 
     const settings = await getTwoFactorSettings();
     const logs = await getRecentOtpLogs();
 
-    return NextResponse.json({
-      success: true,
-      settings,
-      logs,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        settings,
+        logs,
+      },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to fetch 2FA configuration';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
 
@@ -32,7 +45,10 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authorizeMasterRequest(req);
     if (!auth.ok) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+      return NextResponse.json(
+        { success: false, error: auth.error },
+        { status: auth.status, headers: NO_STORE_HEADERS }
+      );
     }
 
     const body = await req.json();
@@ -63,18 +79,24 @@ export async function POST(req: NextRequest) {
 
     const updated = await getTwoFactorSettings();
 
-    return NextResponse.json({
-      success: true,
-      message: 'Two-Factor Authentication & Email gateway settings saved.',
-      settings: updated,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Two-Factor Authentication & Email gateway settings saved.',
+        settings: updated,
+      },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to update 2FA configuration';
     const isClientError =
       /api key is invalid|invalid api key|resend rejected|invalid resend|personal gmail|outbound smtp/i.test(
         message
       );
-    return NextResponse.json({ success: false, error: message }, { status: isClientError ? 400 : 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: isClientError ? 400 : 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
 
@@ -82,19 +104,28 @@ export async function DELETE(req: NextRequest) {
   try {
     const auth = await authorizeMasterRequest(req);
     if (!auth.ok) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+      return NextResponse.json(
+        { success: false, error: auth.error },
+        { status: auth.status, headers: NO_STORE_HEADERS }
+      );
     }
 
     await clearResendApiKey(undefined, 'missing');
     const updated = await getTwoFactorSettings();
 
-    return NextResponse.json({
-      success: true,
-      message: 'Resend API key removed.',
-      settings: updated,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Resend API key removed.',
+        settings: updated,
+      },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to remove Resend API key';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

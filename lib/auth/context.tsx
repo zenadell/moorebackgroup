@@ -3,11 +3,21 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { UserProfile, AuthSessionInfo } from '@/types';
 
+export interface PendingOtpChallenge {
+  otpId: string;
+  challengeId: string;
+  maskedEmail: string;
+  resendCooldownSeconds: number;
+  expiresAt?: number;
+}
+
 interface LoginResult {
   success: boolean;
   requires2FA?: boolean;
   otpId?: string;
+  challengeId?: string;
   maskedEmail?: string;
+  resendAfterSeconds?: number;
   error?: string;
 }
 
@@ -17,11 +27,30 @@ interface AuthContextType {
   isLoading: boolean;
   sessionId: string | null;
   isMaster: boolean;
+  pendingChallenge: PendingOtpChallenge | null;
   revocationNotice: string | null;
   clearRevocationNotice: () => void;
   login: (email: string, pass: string, deviceName?: string) => Promise<LoginResult>;
-  verifyOtp: (otpId: string, code: string, deviceName?: string) => Promise<{ success: boolean; error?: string }>;
-  resendOtp: (otpId: string, deviceName?: string) => Promise<{ success: boolean; newOtpId?: string; error?: string }>;
+  verifyOtp: (
+    otpId: string,
+    code: string,
+    deviceName?: string,
+    challengeId?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  resendOtp: (
+    otpId: string,
+    deviceName?: string,
+    challengeId?: string
+  ) => Promise<{
+    success: boolean;
+    newOtpId?: string;
+    challengeId?: string;
+    maskedEmail?: string;
+    resendAfterSeconds?: number;
+    retryAfterSeconds?: number;
+    error?: string;
+  }>;
+  cancelOtpChallenge: () => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (profile: {
     name?: string;
@@ -51,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isMaster, setIsMaster] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [pendingChallenge, setPendingChallenge] = useState<PendingOtpChallenge | null>(null);
   const [revocationNotice, setRevocationNotice] = useState<string | null>(null);
 
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
@@ -68,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkSession = useCallback(async (token: string): Promise<boolean> => {
     try {
       const res = await fetch('/api/auth/session', {
+        cache: 'no-store',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -119,9 +150,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
 
+    const restorePendingChallenge = async () => {
+      try {
+        const res = await fetch('/api/auth/otp-challenge', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+        const data = await res.json();
+        if (res.ok && data.active && data.otpId) {
+          setPendingChallenge({
+            otpId: data.otpId,
+            challengeId: data.challengeId || '',
+            maskedEmail: data.maskedEmail || 'authorized security email',
+            resendCooldownSeconds: Number(data.resendCooldownSeconds ?? 0),
+            expiresAt: data.expiresAt,
+          });
+        }
+      } catch {
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
-      setIsLoading(false);
+      restorePendingChallenge();
       return;
     }
 
@@ -140,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // ignore
         }
         setRevocationNotice(lockNotice);
-        setIsLoading(false);
+        restorePendingChallenge();
         return;
       }
     }
@@ -173,6 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
           headers: {
             Authorization: `Bearer ${currentToken}`,
           },
@@ -340,6 +394,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: pass, deviceName }),
       });
@@ -352,14 +408,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Check if 2-Factor Authentication (OTP) is required
       if (data.requires2FA) {
+        const challenge: PendingOtpChallenge = {
+          otpId: data.otpId,
+          challengeId: data.challengeId || '',
+          maskedEmail: data.maskedEmail || 'authorized security email',
+          resendCooldownSeconds: Number(data.resendAfterSeconds ?? 30),
+          expiresAt: data.expiresAt,
+        };
+        setPendingChallenge(challenge);
         return {
           success: true,
           requires2FA: true,
           otpId: data.otpId,
+          challengeId: data.challengeId,
           maskedEmail: data.maskedEmail,
+          resendAfterSeconds: challenge.resendCooldownSeconds,
         };
       }
 
+      setPendingChallenge(null);
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       clearRevocationNotice();
@@ -381,13 +448,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyOtp = async (
     otpId: string,
     code: string,
-    deviceName?: string
+    deviceName?: string,
+    challengeId?: string
   ): Promise<{ success: boolean; error?: string }> => {
     try {
+      const resolvedChallengeId = challengeId || pendingChallenge?.challengeId || undefined;
       const res = await fetch('/api/auth/verify-otp', {
         method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ otpId, code, deviceName }),
+        body: JSON.stringify({ otpId, challengeId: resolvedChallengeId, code, deviceName }),
       });
 
       const data = await res.json();
@@ -395,6 +466,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error || 'Verification code failed' };
       }
 
+      setPendingChallenge(null);
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       clearRevocationNotice();
@@ -415,24 +487,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resendOtp = async (
     otpId: string,
-    deviceName?: string
-  ): Promise<{ success: boolean; newOtpId?: string; error?: string }> => {
+    deviceName?: string,
+    challengeId?: string
+  ): Promise<{
+    success: boolean;
+    newOtpId?: string;
+    challengeId?: string;
+    maskedEmail?: string;
+    resendAfterSeconds?: number;
+    retryAfterSeconds?: number;
+    error?: string;
+  }> => {
     try {
+      const resolvedChallengeId = challengeId || pendingChallenge?.challengeId || undefined;
       const res = await fetch('/api/auth/resend-otp', {
         method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ otpId, deviceName }),
+        body: JSON.stringify({ otpId, challengeId: resolvedChallengeId, deviceName }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        return { success: false, error: data.error || 'Failed to resend code' };
+        return {
+          success: false,
+          error: data.error || 'Failed to resend code',
+          retryAfterSeconds:
+            typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : undefined,
+        };
       }
 
-      return { success: true, newOtpId: data.otpId };
+      const nextCooldown = Number(data.resendAfterSeconds ?? 30);
+      setPendingChallenge((prev) => ({
+        otpId: data.otpId,
+        challengeId: data.challengeId || resolvedChallengeId || prev?.challengeId || '',
+        maskedEmail: data.maskedEmail || prev?.maskedEmail || 'authorized security email',
+        resendCooldownSeconds: nextCooldown,
+        expiresAt: data.expiresAt,
+      }));
+
+      return {
+        success: true,
+        newOtpId: data.otpId,
+        challengeId: data.challengeId || resolvedChallengeId,
+        maskedEmail: data.maskedEmail,
+        resendAfterSeconds: nextCooldown,
+      };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to request new code';
       return { success: false, error: message };
+    }
+  };
+
+  const cancelOtpChallenge = async (): Promise<void> => {
+    setPendingChallenge(null);
+    try {
+      await fetch('/api/auth/otp-challenge', {
+        method: 'DELETE',
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+    } catch {
+      // ignore
     }
   };
 
@@ -612,11 +729,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         sessionId,
         isMaster,
+        pendingChallenge,
         revocationNotice,
         clearRevocationNotice,
         login,
         verifyOtp,
         resendOtp,
+        cancelOtpChallenge,
         logout,
         updateProfile,
         fetchSessions,

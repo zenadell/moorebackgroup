@@ -115,7 +115,30 @@ export function TwoFactorTab({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {otpLogs.map((otp) => {
               const isExpired = otp.expiresAt < Date.now();
-              const isActive = !otp.used && !isExpired;
+              const isSuperseded = Boolean(otp.superseded) && !otp.used;
+              const isActive = !otp.used && !isSuperseded && !isExpired;
+              const statusLabel = otp.used
+                ? 'Consumed'
+                : isSuperseded
+                ? 'Superseded'
+                : isExpired
+                ? 'Expired'
+                : 'Active';
+              const badgeBg = otp.used
+                ? '#f3f4f6'
+                : isSuperseded
+                ? '#fffbeb'
+                : isExpired
+                ? '#fef2f2'
+                : '#ecfdf5';
+              const badgeColor = otp.used
+                ? '#4b5563'
+                : isSuperseded
+                ? '#92400e'
+                : isExpired
+                ? '#991b1b'
+                : '#065f46';
+
               return (
                 <div
                   key={otp.id}
@@ -169,6 +192,17 @@ export function TwoFactorTab({
                       <div style={{ fontSize: '11.5px', color: '#6b7280' }}>
                         {otp.email} • {otp.ipAddress} • {new Date(otp.createdAt).toLocaleString()}
                       </div>
+                      <div
+                        style={{
+                          fontSize: '10.5px',
+                          color: '#9ca3af',
+                          fontFamily: 'monospace',
+                          marginTop: '2px',
+                        }}
+                      >
+                        {otp.challengeId ? `Session: ${otp.challengeId.slice(0, 20)}… • ` : ''}
+                        DB: {otp.id}
+                      </div>
                     </div>
                   </div>
 
@@ -178,15 +212,11 @@ export function TwoFactorTab({
                       fontWeight: 500,
                       padding: '2px 8px',
                       borderRadius: '9999px',
-                      backgroundColor: otp.used
-                        ? '#f3f4f6'
-                        : isExpired
-                        ? '#fef2f2'
-                        : '#ecfdf5',
-                      color: otp.used ? '#4b5563' : isExpired ? '#991b1b' : '#065f46',
+                      backgroundColor: badgeBg,
+                      color: badgeColor,
                     }}
                   >
-                    {otp.used ? 'Consumed' : isExpired ? 'Expired' : 'Active'}
+                    {statusLabel}
                   </span>
                 </div>
               );

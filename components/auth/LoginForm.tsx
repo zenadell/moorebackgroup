@@ -24,6 +24,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     login,
     verifyOtp,
     resendOtp,
+    pendingChallenge,
+    cancelOtpChallenge,
     revocationNotice,
     clearRevocationNotice,
   } = useAuth();
@@ -37,6 +39,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   // 2FA OTP stage
   const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
   const [otpId, setOtpId] = useState<string>('');
+  const [challengeId, setChallengeId] = useState<string>('');
   const [otpCode, setOtpCode] = useState<string>('');
   const [maskedEmail, setMaskedEmail] = useState<string>('');
   const [resendCooldown, setResendCooldown] = useState<number>(0);
@@ -44,6 +47,19 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   const [resendNotice, setResendNotice] = useState<string | null>(null);
 
   const [error, setError] = useState('');
+
+  // Rehydrate active DB-backed 2FA challenge automatically across page reloads
+  useEffect(() => {
+    if (pendingChallenge && pendingChallenge.otpId) {
+      setOtpId((prev) => prev || pendingChallenge.otpId);
+      setChallengeId((prev) => prev || pendingChallenge.challengeId);
+      setMaskedEmail((prev) => prev || pendingChallenge.maskedEmail || 'authorized security email');
+      setStep('otp');
+      setResendCooldown((prev) =>
+        prev > 0 ? prev : pendingChallenge.resendCooldownSeconds ?? 0
+      );
+    }
+  }, [pendingChallenge]);
 
   // Countdown timer for resend
   useEffect(() => {
@@ -80,9 +96,11 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       if (res.success) {
         if (res.requires2FA && res.otpId) {
           setOtpId(res.otpId);
+          setChallengeId(res.challengeId || '');
           setMaskedEmail(res.maskedEmail || 'authorized security email');
+          setOtpCode('');
           setStep('otp');
-          setResendCooldown(60);
+          setResendCooldown(res.resendAfterSeconds ?? 30);
         } else {
           if (onSuccess) onSuccess();
         }
@@ -107,7 +125,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     setIsSubmitting(true);
     try {
       const deviceName = getDeviceName();
-      const res = await verifyOtp(otpId, otpCode.replace(/\D/g, ''), deviceName);
+      const res = await verifyOtp(otpId, otpCode.replace(/\D/g, ''), deviceName, challengeId);
 
       if (res.success) {
         if (onSuccess) onSuccess();
@@ -126,14 +144,19 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     setResendNotice(null);
 
     const deviceName = getDeviceName();
-    const res = await resendOtp(otpId, deviceName);
+    const res = await resendOtp(otpId, deviceName, challengeId);
     setIsResending(false);
 
     if (res.success && res.newOtpId) {
       setOtpId(res.newOtpId);
-      setResendCooldown(60);
-      setResendNotice('A new security code has been dispatched to the owner email.');
+      if (res.challengeId) setChallengeId(res.challengeId);
+      setOtpCode('');
+      setResendCooldown(res.resendAfterSeconds ?? 30);
+      setResendNotice('A new security code has been dispatched and is active now.');
     } else {
+      if (typeof res.retryAfterSeconds === 'number' && res.retryAfterSeconds > 0) {
+        setResendCooldown(res.retryAfterSeconds);
+      }
       setError(res.error || 'Failed to resend code. Please try again.');
     }
   };
@@ -478,7 +501,12 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               <button
                 type="button"
                 onClick={() => {
+                  cancelOtpChallenge();
                   setStep('credentials');
+                  setOtpId('');
+                  setChallengeId('');
+                  setOtpCode('');
+                  setResendNotice(null);
                   setError('');
                 }}
                 style={{

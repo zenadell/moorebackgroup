@@ -105,6 +105,7 @@ const TABLES = [
     name: 'otp_codes',
     columns: [
       'id',
+      'challenge_id',
       'code',
       'email',
       'device_name',
@@ -113,6 +114,7 @@ const TABLES = [
       'created_at',
       'expires_at',
       'used',
+      'superseded',
     ],
     pk: 'id',
   },

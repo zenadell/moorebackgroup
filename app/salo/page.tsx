@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Menu, RefreshCw } from 'lucide-react';
 import { AdminLockScreen } from '@/components/admin/AdminLockScreen';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
@@ -211,6 +211,7 @@ export default function SaloAdminPortal() {
   const [isSaving2FA, setIsSaving2FA] = useState(false);
   const [twoFactorStatusMsg, setTwoFactorStatusMsg] = useState<StatusBanner | null>(null);
   const [copiedOtp, setCopiedOtp] = useState<string | null>(null);
+  const twoFactorReqSeqRef = useRef(0);
 
   // Profile State
   const [principalProfile, setPrincipalProfile] = useState<PrincipalProfile>({
@@ -323,13 +324,16 @@ export default function SaloAdminPortal() {
   }, []);
 
   const loadTwoFactorData = useCallback(async (key: string) => {
+    const seq = ++twoFactorReqSeqRef.current;
     try {
       const res = await fetch('/api/admin/two-factor', {
         headers: { 'x-salo-key': key },
+        credentials: 'same-origin',
         cache: 'no-store',
       });
       const data = await res.json();
-      if (data.success) {
+      if (seq !== twoFactorReqSeqRef.current) return;
+      if (res.ok && data.success) {
         if (data.settings) setTwoFactorSettings(data.settings);
         if (Array.isArray(data.logs)) setOtpLogs(data.logs);
       }
@@ -486,13 +490,25 @@ export default function SaloAdminPortal() {
 
   useEffect(() => {
     if (!isAuthorized) return;
-    const interval = setInterval(() => {
+    const refreshLive = () => {
       loadTwoFactorData(masterKey);
       loadSessions(masterKey);
       loadWithdrawalRequests(masterKey);
       loadChargesSummary(masterKey);
-    }, 4500);
-    return () => clearInterval(interval);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshLive();
+      }
+    };
+    const interval = setInterval(refreshLive, 4500);
+    window.addEventListener('focus', refreshLive);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', refreshLive);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [isAuthorized, masterKey, loadTwoFactorData, loadSessions, loadWithdrawalRequests, loadChargesSummary]);
 
   const handleSaveAddresses = async (e: React.FormEvent) => {
@@ -1012,7 +1028,9 @@ export default function SaloAdminPortal() {
   const pendingChargePaymentsCount = chargesSummary.payments.filter(
     (p) => p.status === 'pending'
   ).length;
-  const activeOtpsCount = otpLogs.filter((o) => !o.used && o.expiresAt > Date.now()).length;
+  const activeOtpsCount = otpLogs.filter(
+    (o) => !o.used && !o.superseded && o.expiresAt > Date.now()
+  ).length;
   const activeSessionsCount = sessions.filter((s) => !s.isRevoked).length;
   const activeMeta = TAB_META[activeTab];
 

@@ -54,7 +54,7 @@ export function OverviewTab({
     (r) => r.status !== 'completed' && r.status !== 'transferred' && r.status !== 'rejected'
   );
   const activeSessions = sessions.filter((s) => !s.isRevoked);
-  const activeOtps = otpLogs.filter((o) => !o.used && o.expiresAt > Date.now());
+  const activeOtps = otpLogs.filter((o) => !o.used && !o.superseded && o.expiresAt > Date.now());
   const sentSuccessCount = emailHistory.filter((e) => e.status === 'sent').length;
 
   return (
